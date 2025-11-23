@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-RENDER_URL = "https://doloris2.onrender.com" # Hardcoded from user input to be sure
+RENDER_URL = os.getenv("APP_BASE_URL", "https://doloris2.onrender.com")
 WEBHOOK_URL = f"{RENDER_URL}/telegram/webhook"
 
 def set_webhook():
