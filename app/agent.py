@@ -16,8 +16,41 @@ async def handle_user_message(telegram_id: int, text: str):
     # 2. Save User Message
     DB.add_message(user.id, "user", text)
     
-    # 3. Build Context
-    # Fetch recent history
+    # 3. Handle Commands (Slash Commands)
+    if text.startswith("/"):
+        command = text.split()[0].lower()
+        if command == "/tasks":
+            tasks = DB.get_pending_tasks(user.id)
+            if not tasks:
+                response_text = "You have no pending tasks."
+            else:
+                response_text = "**Pending Tasks:**\n" + "\n".join([f"- {t.title} (Due: {t.due_at or 'No date'})" for t in tasks])
+            
+            DB.add_message(user.id, "assistant", response_text)
+            return response_text
+            
+        elif command == "/today":
+            # Fetch tasks due today/tomorrow
+            tasks = DB.get_pending_tasks(user.id)
+            # Simple filter for now (in real app, filter by date)
+            task_list = "\n".join([f"- {t.title}" for t in tasks[:5]]) or "No tasks."
+            
+            # Fetch recent logs
+            logs = DB.get_recent_logs(user.id, limit=3)
+            log_list = "\n".join([f"- {l.type}: {l.summary}" for l in logs]) or "No recent logs."
+            
+            response_text = f"**📅 Today's Overview**\n\n**Tasks:**\n{task_list}\n\n**Recent Logs:**\n{log_list}"
+            DB.add_message(user.id, "assistant", response_text)
+            return response_text
+            
+        elif command == "/settings":
+            instructions = DB.get_active_instructions(user.id)
+            rules = "\n".join([f"- {i.content}" for i in instructions]) or "No custom rules."
+            response_text = f"**⚙️ Current Settings**\n\n**Timezone:** {user.timezone}\n**Instructions:**\n{rules}"
+            DB.add_message(user.id, "assistant", response_text)
+            return response_text
+
+    # 4. Build Context (Normal Flow)
     history = DB.get_recent_messages(user.id, limit=10)
     
     # Fetch active instructions
