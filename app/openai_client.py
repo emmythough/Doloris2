@@ -83,3 +83,26 @@ class OpenAIClient:
         except Exception as e:
             logger.error(f"OpenAI API Error: {e}")
             return {"content": "I encountered an error connecting to my brain."}
+
+# Backward-compatible wrapper for legacy code (heartbeat.py)
+def get_completion(
+    messages: list,
+    tools: list = None,
+    model: str = "gpt-4o",
+    temperature: float = 0.7
+):
+    """
+    Legacy wrapper for backward compatibility.
+    Returns the raw OpenAI message object (not async).
+    """
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            tools=tools,
+            temperature=temperature
+        )
+        return response.choices[0].message
+    except Exception as e:
+        logger.error(f"OpenAI API Error: {e}")
+        raise e
