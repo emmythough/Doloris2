@@ -15,6 +15,8 @@ KEY_TO_USE = SUPABASE_SERVICE_ROLE_KEY if SUPABASE_SERVICE_ROLE_KEY else SUPABAS
 supabase: Client = create_client(SUPABASE_URL, KEY_TO_USE)
 
 class DB:
+    supabase = supabase  # Expose client as class attribute for services
+    
     @staticmethod
     def get_user_by_telegram_id(telegram_id: int) -> Optional[User]:
         response = supabase.table("users").select("*").eq("telegram_id", telegram_id).execute()
@@ -76,15 +78,6 @@ class DB:
             .order("priority", desc=True)\
             .execute()
         return [Task(**t) for t in response.data]
-
-    @staticmethod
-    def get_active_instructions(user_id: str) -> List[Instruction]:
-        response = supabase.table("instructions")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .eq("is_active", True)\
-            .execute()
-        return [Instruction(**i) for i in response.data]
 
     @staticmethod
     def update_instruction(user_id: str, content: str, scope: str = "global", is_active: bool = True) -> Instruction:
