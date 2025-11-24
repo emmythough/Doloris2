@@ -15,6 +15,8 @@ KEY_TO_USE = SUPABASE_SERVICE_ROLE_KEY if SUPABASE_SERVICE_ROLE_KEY else SUPABAS
 supabase: Client = create_client(SUPABASE_URL, KEY_TO_USE)
 
 class DB:
+    supabase = supabase  # Expose client as class attribute for services
+    
     @staticmethod
     def get_user_by_telegram_id(telegram_id: int) -> Optional[User]:
         response = supabase.table("users").select("*").eq("telegram_id", telegram_id).execute()
@@ -38,6 +40,44 @@ class DB:
         data = {
             "user_id": user_id,
             "role": role,
+            "content": content,
+            "meta": meta or {}
+        }
+        response = supabase.table("messages").insert(data).execute()
+        return Message(**response.data[0])
+
+    @staticmethod
+    def get_recent_messages(user_id: str, limit: int = 20) -> List[Message]:
+        response = supabase.table("messages")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .order("created_at", desc=True)\
+            .limit(limit)\
+            .execute()
+        # Return in chronological order (reversed)
+        messages = [Message(**msg) for msg in response.data]
+        return messages[::-1]
+
+    @staticmethod
+    def add_task(user_id: str, title: str, due_at: str = None, priority: int = 1) -> Task:
+        data = {
+            "user_id": user_id,
+            "title": title,
+            "due_at": due_at,
+            "priority": priority
+        }
+        response = supabase.table("tasks").insert(data).execute()
+        return Task(**response.data[0])
+
+    @staticmethod
+    def get_pending_tasks(user_id: str) -> List[Task]:
+        response = supabase.table("tasks")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .in_("status", ["todo", "in_progress"])\
+            .order("priority", desc=True)\
+            .execute()
+        return [Task(**t) for t in response.data]
 
     @staticmethod
     def update_instruction(user_id: str, content: str, scope: str = "global", is_active: bool = True) -> Instruction:
