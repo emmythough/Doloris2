@@ -80,6 +80,20 @@ class DB:
         return [Task(**t) for t in response.data]
 
     @staticmethod
+    def get_active_instructions(user_id: int) -> List[Instruction]:
+        """Get active instructions for a user"""
+        try:
+            response = supabase.table("instructions") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .eq("is_active", True) \
+                .execute()
+            return [Instruction(**i) for i in response.data]
+        except Exception as e:
+            print(f"Error fetching instructions: {e}")
+            return []
+
+    @staticmethod
     def update_instruction(user_id: str, content: str, scope: str = "global", is_active: bool = True) -> Instruction:
         data = {
             "user_id": user_id,
