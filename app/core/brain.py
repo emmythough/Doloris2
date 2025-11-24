@@ -154,7 +154,7 @@ class Brain:
     ) -> str:
         """Call OpenAI and handle tool calls"""
         
-        # Initial call
+        # Initial call (no temperature - GPT-5 only supports default)
         response = await self.openai_client.chat_completion(
             model=model_name,
             messages=messages,
@@ -180,7 +180,7 @@ class Brain:
                     "content": str(result["result"])
                 })
             
-            # Call OpenAI again with tool results
+            # Call OpenAI again with tool results (no temperature)
             final_response = await self.openai_client.chat_completion(
                 model=model_name,
                 messages=messages,
