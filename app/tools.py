@@ -1,82 +1,73 @@
 from app.db import DB
 import json
 
-# Tool Definitions Schema for OpenAI
+# Tool Definitions Schema for OpenAI Responses API
+# Note: Responses API uses flattened structure (name at top level, not nested in function)
 TOOLS_SCHEMA = [
     {
         "type": "function",
-        "function": {
-            "name": "add_task",
-            "description": "Add a new task to the user's list.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string", "description": "The task description."},
-                    "due_at": {"type": "string", "description": "ISO 8601 date string for deadline (optional)."},
-                    "priority": {"type": "integer", "description": "Priority 1-5 (default 1)."}
-                },
-                "required": ["title"]
-            }
+        "name": "add_task",
+        "description": "Add a new task to the user's list.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "The task description."},
+                "due_at": {"type": "string", "description": "ISO 8601 date string for deadline (optional)."},
+                "priority": {"type": "integer", "description": "Priority 1-5 (default 1)."}
+            },
+            "required": ["title"]
         }
     },
     {
         "type": "function",
-        "function": {
-            "name": "list_tasks",
-            "description": "List all pending tasks for the user.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+        "name": "list_tasks",
+        "description": "List all pending tasks for the user.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
         }
     },
     {
         "type": "function",
-        "function": {
-            "name": "update_instruction",
-            "description": "Update or add a behavioral instruction for the assistant.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "scope": {"type": "string", "description": "Scope of instruction (e.g., 'global', 'health')."},
-                    "content": {"type": "string", "description": "The instruction content."},
-                    "is_active": {"type": "boolean", "description": "Whether the instruction is active."}
-                },
-                "required": ["content"]
-            }
+        "name": "update_instruction",
+        "description": "Update or add a behavioral instruction for the assistant.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scope": {"type": "string", "description": "Scope of instruction (e.g., 'global', 'health')."},
+                "content": {"type": "string", "description": "The instruction content."},
+                "is_active": {"type": "boolean", "description": "Whether the instruction is active."}
+            },
+            "required": ["content"]
         }
     },
     {
         "type": "function",
-        "function": {
-            "name": "create_log",
-            "description": "Log a life event or note (e.g., sleep, mood, workout).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "type": {"type": "string", "description": "Type of event (e.g., 'sleep', 'mood', 'work')."},
-                    "summary": {"type": "string", "description": "Brief summary of the event."},
-                    "details": {"type": "object", "description": "JSON details (optional)."},
-                    "occurred_at": {"type": "string", "description": "ISO 8601 timestamp (optional)."}
-                },
-                "required": ["type", "summary"]
-            }
+        "name": "create_log",
+        "description": "Log a life event or note (e.g., sleep, mood, workout).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "description": "Type of event (e.g., 'sleep', 'mood', 'work')."},
+                "summary": {"type": "string", "description": "Brief summary of the event."},
+                "details": {"type": "object", "description": "JSON details (optional)."},
+                "occurred_at": {"type": "string", "description": "ISO 8601 timestamp (optional)."}
+            },
+            "required": ["type", "summary"]
         }
     },
     {
         "type": "function",
-        "function": {
-            "name": "propose_nudge",
-            "description": "Propose a proactive message to send to the user.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "message": {"type": "string", "description": "The message content to send."},
-                    "reason": {"type": "string", "description": "Internal reason for sending this nudge."}
-                },
-                "required": ["message", "reason"]
-            }
+        "name": "propose_nudge",
+        "description": "Propose a proactive message to send to the user.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "message": {"type": "string", "description": "The message content to send."},
+                "reason": {"type": "string", "description": "Internal reason for sending this nudge."}
+            },
+            "required": ["message", "reason"]
         }
     }
 ]
