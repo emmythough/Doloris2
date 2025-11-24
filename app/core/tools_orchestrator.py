@@ -116,13 +116,32 @@ class ToolsOrchestrator:
         """Execute multiple tool calls"""
         results = []
         for tool_call in tool_calls:
+            # GPT-5 / New Format Support
+            if tool_call.get("type") == "tool_call":
+                tool_name = tool_call.get("name")
+                # Parse arguments if they are string (standard) or dict (if pre-parsed)
+                import json
+                args = tool_call.get("arguments", {})
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except:
+                        args = {}
+                
+                tool_id = tool_call.get("id")
+            else:
+                # Fallback / Standard Format
+                tool_name = tool_call.get("name")
+                args = tool_call.get("arguments", {})
+                tool_id = tool_call.get("id")
+
             result = ToolsOrchestrator.execute_tool(
-                tool_name=tool_call.get("name"),
-                arguments=tool_call.get("arguments", {}),
+                tool_name=tool_name,
+                arguments=args,
                 user_id=user_id
             )
             results.append({
-                "tool_call_id": tool_call.get("id"),
+                "tool_call_id": tool_id,
                 "result": result
             })
         return results

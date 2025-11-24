@@ -1,9 +1,11 @@
 """
 Model Router - Intelligent model selection for cost optimization
 
-Tier 1 (gpt-4o-mini): Fast, cheap - intent detection, simple responses
-Tier 2 (gpt-4o): Main brain - conversations, tool calling
-Tier 3 (o1-mini): Deep reasoning - complex analysis, research
+Tier 0 (gpt-5-nano): Ultra-cheap - Short reactions, yes/no, thanks
+Tier 1 (gpt-5-mini): Balance - General conversation, simple tasks
+Tier 2 (gpt-5): Standard - Tool usage, memory writes, calendar, file analysis
+Tier 3 (gpt-5.1): Reasoning - Complex reasoning, planning
+Tier 4 (o1-mini/o3-pro): Deep - Explicit deep thinking or max intelligence
 """
 
 import logging
@@ -13,79 +15,73 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 class ModelTier(Enum):
-    TIER_1 = "gpt-4o-mini"      # Fast & cheap
-    TIER_2 = "gpt-4o"            # Main brain
-    TIER_3 = "o1-mini"           # Deep reasoning
+    TIER_0 = "gpt-5-nano"       # Ultra-cheap
+    TIER_1 = "gpt-5-mini"       # Balance
+    TIER_2 = "gpt-5"            # Standard
+    TIER_3 = "gpt-5.1"          # Reasoning
+    TIER_4_DEEP = "o1-mini"     # Deep
+    TIER_4_MAX = "o3-pro"       # Max Intelligence
 
 class ModelRouter:
     """Decides which model to use based on message intent"""
     
-    # Keywords that suggest simple intent (Tier 1)
-    SIMPLE_KEYWORDS = [
-        "hi", "hello", "hey", "thanks", "thank you", "ok", "okay",
-        "yes", "no", "sure", "got it", "cool", "nice"
+    # Keywords for Tier 0 (Nano)
+    SHORT_ACKNOWLEDGEMENTS = [
+        "ok", "okay", "k", "yes", "no", "yep", "nope", 
+        "thanks", "thx", "cool", "nice", "got it", "sure", 
+        "hi", "hello", "hey", "yo"
     ]
     
-    # Keywords that suggest deep reasoning needed (Tier 3)
-    DEEP_KEYWORDS = [
-        "analyze", "research", "explain in detail", "compare",
-        "pros and cons", "evaluate", "investigate", "study"
+    # Keywords for Tier 3 (Reasoning)
+    REASONING_KEYWORDS = [
+        "analyze", "compare", "evaluate", "investigate", "study",
+        "plan", "strategy", "why", "how to", "explain"
     ]
+    
+    # Keywords for Tier 4 (Deep/Max)
+    DEEP_KEYWORDS = ["deep", "think hard", "complex"]
+    MAX_KEYWORDS = ["deep research", "maximum intelligence", "max intelligence"]
     
     @staticmethod
     def select_model(
         message: str,
+        context: str = "",
         has_tools: bool = False,
         user_preference: Optional[str] = None,
         file_attached: bool = False
     ) -> ModelTier:
         """
         Select the appropriate model tier
-        
-        Args:
-            message: User's message text
-            has_tools: Whether tools are available for this request
-            user_preference: User's thinking_mode preference
-            file_attached: Whether user attached a file
-        
-        Returns:
-            ModelTier enum
         """
-        message_lower = message.lower().strip()
+        text = message.lower().strip()
         
-        # User explicitly requested deep thinking
-        if user_preference == "deep":
-            logger.info("User preference: deep → Tier 3")
+        # Tier 4: Explicit Deep/Max Request
+        if any(k in text for k in ModelRouter.MAX_KEYWORDS):
+            logger.info("Max intelligence requested → Tier 4 (o3-pro)")
+            return ModelTier.TIER_4_MAX
+            
+        if any(k in text for k in ModelRouter.DEEP_KEYWORDS) or user_preference == "deep":
+            logger.info("Deep thinking requested → Tier 4 (o1-mini)")
+            return ModelTier.TIER_4_DEEP
+            
+        # Tier 3: Complex Reasoning
+        if any(k in text for k in ModelRouter.REASONING_KEYWORDS):
+            logger.info("Reasoning needed → Tier 3 (gpt-5.1)")
             return ModelTier.TIER_3
-        
-        # Check for deep reasoning keywords
-        if any(keyword in message_lower for keyword in ModelRouter.DEEP_KEYWORDS):
-            logger.info("Deep reasoning keywords detected → Tier 3")
-            return ModelTier.TIER_3
-        
-        # File attached - use main brain for understanding
-        if file_attached:
-            logger.info("File attached → Tier 2")
+            
+        # Tier 2: Tools, Files, Long Context
+        if has_tools or file_attached or len(context) > 2000:
+            logger.info("Tools/Files/Context → Tier 2 (gpt-5)")
             return ModelTier.TIER_2
-        
-        # Tools required - use main brain
-        if has_tools:
-            logger.info("Tools required → Tier 2")
-            return ModelTier.TIER_2
-        
-        # Simple greeting or acknowledgment
-        if any(keyword == message_lower for keyword in ModelRouter.SIMPLE_KEYWORDS):
-            logger.info("Simple intent detected → Tier 1")
-            return ModelTier.TIER_1
-        
-        # Very short message (likely simple)
-        if len(message.split()) <= 3:
-            logger.info("Short message → Tier 1")
-            return ModelTier.TIER_1
-        
-        # Default to Tier 2 (main brain)
-        logger.info("Default → Tier 2")
-        return ModelTier.TIER_2
+            
+        # Tier 0: Short Acknowledgements
+        if len(text) < 12 or text in ModelRouter.SHORT_ACKNOWLEDGEMENTS:
+            logger.info("Short acknowledgement → Tier 0 (gpt-5-nano)")
+            return ModelTier.TIER_0
+            
+        # Tier 1: Default (General Conversation)
+        logger.info("General conversation → Tier 1 (gpt-5-mini)")
+        return ModelTier.TIER_1
     
     @staticmethod
     def get_model_name(tier: ModelTier) -> str:

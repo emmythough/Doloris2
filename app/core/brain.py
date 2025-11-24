@@ -59,8 +59,12 @@ class Brain:
             context = self._build_context(user.id, message, file_url, file_metadata)
             
             # 4. Select model tier
+            # Context is the full conversation text for analysis
+            context_text = "\n".join([m["content"] for m in context["messages"] if isinstance(m["content"], str)])
+            
             model_tier = self.model_router.select_model(
                 message=message,
+                context=context_text,
                 has_tools=True,  # We always have tools available
                 user_preference=preferences.get("thinking_mode"),
                 file_attached=file_url is not None
