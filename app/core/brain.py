@@ -132,8 +132,8 @@ class Brain:
         history = DB.get_recent_messages(user_id, limit=10)
         for msg in history:
             messages.append({
-                "role": msg.direction,
-                "content": msg.text
+                "role": msg.role,
+                "content": msg.content
             })
         
         # Add current message
