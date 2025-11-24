@@ -59,12 +59,19 @@ class OpenAIClient:
             # Let's check the previous file... it didn't have a class structure in the snippet I saw earlier.
             # I will implement it as a class method since Brain calls `self.openai_client.chat_completion`.
             
-            response = client.chat.completions.create(
-                model=model,
-                messages=formatted_messages,
-                tools=tools,
-                temperature=temperature
-            )
+            # Prepare arguments
+            api_args = {
+                "model": model,
+                "messages": formatted_messages,
+                "tools": tools
+            }
+            
+            # Reasoning models (o1, o3) do not support temperature (or require it to be 1)
+            # We exclude it for them to be safe.
+            if not model.startswith("o1") and not model.startswith("o3"):
+                api_args["temperature"] = temperature
+            
+            response = client.chat.completions.create(**api_args)
             
             message = response.choices[0].message
             
@@ -96,12 +103,17 @@ def get_completion(
     Returns the raw OpenAI message object (not async).
     """
     try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            tools=tools,
-            temperature=temperature
-        )
+        # Prepare arguments
+        api_args = {
+            "model": model,
+            "messages": messages,
+            "tools": tools
+        }
+        
+        if not model.startswith("o1") and not model.startswith("o3"):
+            api_args["temperature"] = temperature
+
+        response = client.chat.completions.create(**api_args)
         return response.choices[0].message
     except Exception as e:
         logger.error(f"OpenAI API Error: {e}")
