@@ -1,206 +1,108 @@
-# How Doloris 2 Works - Simple Explanation
+# How Doloris 2.0 Works - System Architecture
 
-## The Big Picture
-
-Doloris 2 is a Telegram bot that acts as your personal AI assistant. Think of it like having a smart friend who remembers everything you tell them and can help you stay organized.
-
----
-
-## The 4 Main Parts
-
-### 1. **The Brain** 🧠 (OpenAI GPT-4)
-- **What it does**: Understands your messages and decides what to do
-- **Example**: When you say "Remind me to call mom tomorrow", the brain understands you want a task created
-
-### 2. **The Memory** 💾 (Supabase Database)
-- **What it does**: Stores everything permanently
-- **What it remembers**:
-  - Your tasks and reminders
-  - Your conversation history
-  - Your personal instructions (like "Call me Captain")
-  - Your mood logs and notes
-
-### 3. **The Body** 📱 (Telegram)
-- **What it does**: The interface you interact with
-- **How**: You send messages on Telegram, Doloris responds
-
-### 4. **The Nervous System** ⚡ (FastAPI Backend on Render)
-- **What it does**: Connects everything together
-- **Where**: Running 24/7 on Render's servers
+## The Vision
+Doloris 2.0 is a scalable, multi-model AI assistant platform designed to be your "Jarvis". She is autonomous, self-aware, and capable of handling files, managing your calendar, and organizing your life across multiple platforms.
 
 ---
 
-## How a Message Flows Through the System
+## The Core Architecture
 
-Let's say you send: **"Remind me to buy milk tomorrow at 3pm"**
+Doloris 2.0 is built on a modular **Layered Architecture**:
 
-### Step 1: Telegram Receives Your Message
-- You type in the Telegram app
-- Telegram sends it to Render via a "webhook"
+### 1. **The Brain (Core Layer)** 🧠
+The central intelligence engine that orchestrates everything.
+- **`Brain`**: The main controller. It builds context, manages the conversation flow, and decides what to do.
+- **`Model Router`**: Automatically switches between models based on complexity:
+  - **Tier 1 (`gpt-4o-mini`)**: Fast & cheap. Used for simple greetings ("Hi", "Thanks").
+  - **Tier 2 (`gpt-4o`)**: The main workhorse. Used for general conversations and tool usage.
+  - **Tier 3 (`o1-mini`)**: Deep reasoning. Used for complex analysis or when you ask to "think deeply".
+- **`Self Model`**: Doloris's personality and goals, stored in the database. She knows who she is and what her mission is.
 
-### Step 2: Render Receives the Webhook
-- File: `app/telegram_webhook.py`
-- Extracts your user ID and message text
-- Passes it to the Agent
+### 2. **The Nervous System (API Gateway)** ⚡
+A FastAPI application that routes incoming requests.
+- **`/api/v1/message`**: Handles text messages.
+- **`/api/v1/file`**: Handles file uploads (PDFs, images).
+- **`/telegram/webhook`**: Receives updates from Telegram.
 
-### Step 3: The Agent Processes Your Message
-- File: `app/agent.py`
-- Checks if it's a command (like `/today`)
-- If not, it builds context:
-  - Fetches your recent messages
-  - Fetches your personal instructions
-  - Fetches your recent logs
+### 3. **The Senses (Channels Layer)** 👁️
+Adapters that connect Doloris to the outside world.
+- **`TelegramAdapter`**: Handles messages and file downloads from Telegram. It uploads files to your personal cloud storage before showing them to the Brain.
+- *(Future)*: WhatsApp Adapter, Web Interface.
 
-### Step 4: OpenAI Decides What to Do
-- File: `app/openai_client.py`
-- Sends your message + context to GPT-4
-- GPT-4 sees you want a task and calls the `add_task` tool
-
-### Step 5: The Tool Executes
-- File: `app/tools.py`
-- The `add_task` function runs
-- Saves "Buy milk" to the database with due date "tomorrow 3pm"
-
-### Step 6: Database Stores It
-- File: `app/db.py`
-- Connects to Supabase
-- Inserts the task into the `tasks` table
-
-### Step 7: Response Sent Back
-- OpenAI generates a friendly response: "Got it! I'll remind you to buy milk tomorrow at 3pm."
-- The agent returns this to the webhook
-- The webhook sends it back to Telegram
-- You see the message in your chat
+### 4. **The Hands (Services Layer)** 🛠️
+Modules that perform actual actions.
+- **`StorageService`**: Manages your personal Supabase Storage bucket.
+- **`CalendarService`**: Connects to Google Calendar (OAuth).
+- **`TasksService`**: Manages your to-do list in the database.
+- **`ToolsOrchestrator`**: Securely executes tools requested by OpenAI.
 
 ---
 
-## The Database Tables
+## How a File is Processed 📂
 
-### `users`
-- Stores your Telegram ID, name, timezone
-
-### `messages`
-- Every message you send and receive (for context)
-
-### `tasks`
-- Your to-do items and reminders
-
-### `instructions`
-- Personal rules you've set (e.g., "Call me Captain")
-
-### `logs`
-- Notes about your mood, sleep, activities
-
-### `nudges`
-- Proactive messages the bot wants to send you
+1.  **You send a PDF** to Telegram.
+2.  **TelegramAdapter** detects the file.
+3.  It calls **`StorageService`** to ensure you have a personal bucket.
+4.  It **downloads** the file and **uploads** it to your Supabase Storage.
+5.  It gets a **public URL** for the file.
+6.  It sends the **URL + Metadata** to the **Brain**.
+7.  The **Brain** sees the URL and passes it to OpenAI.
+8.  **OpenAI reads the file directly** and Doloris answers your questions about it.
 
 ---
 
-## The Special Tools (Functions)
+## The Database Schema 🗄️
 
-The brain can call these "tools" to interact with your data:
+Doloris 2.0 uses a robust Supabase PostgreSQL schema:
 
-1. **`add_task`**: Creates a new reminder/task
-2. **`list_tasks`**: Shows your pending tasks
-3. **`update_instruction`**: Saves a new personal rule
-4. **`create_log`**: Records a note about you (mood, sleep, etc.)
-5. **`propose_nudge`**: Suggests a proactive message to send you
-
----
-
-## The Slash Commands (Quick Actions)
-
-These bypass OpenAI to save tokens and respond instantly:
-
-- **`/today`**: Shows tasks + recent logs
-- **`/tasks`**: Lists all pending tasks
-- **`/settings`**: Shows your timezone and instructions
+-   **`users`**: Your profile and timezone.
+-   **`preferences`**: Your settings (e.g., "friendly" tone, "deep" thinking mode).
+-   **`system_state`**: Doloris's global personality and version.
+-   **`files`**: Metadata of every file you've uploaded.
+-   **`storage_spaces`**: Tracks your personal storage bucket ID.
+-   **`connections`**: OAuth tokens for Google Calendar, etc.
+-   **`tasks`** & **`logs`**: Your data.
 
 ---
 
-## The Heartbeat (Autonomous Mode)
+## Autonomous Tools 🛠️
 
-- **Endpoint**: `/heartbeat/trigger`
-- **What it does**: Runs every hour (via a cron job)
-- **Purpose**: Checks if the bot should proactively message you
-- **Example**: If you have a task due soon, it might nudge you
+Doloris can decide to use these tools on her own:
+
+-   **`add_task`**: "Remind me to..."
+-   **`create_supabase_bucket`**: "I'm sending you a file..." (Auto-created on first upload)
+-   **`list_tasks`**: "What do I have to do?"
+-   **`update_instruction`**: "Call me Captain from now on."
+-   **`create_log`**: "I'm feeling tired." (Logs mood)
 
 ---
 
-## File Structure
+## Directory Structure
 
 ```
 app/
-├── main.py              # Starts the FastAPI server
-├── config.py            # Loads environment variables
-├── telegram_webhook.py  # Receives messages from Telegram
-├── agent.py             # Main logic orchestrator
-├── openai_client.py     # Talks to OpenAI API
-├── db.py                # Talks to Supabase database
-├── tools.py             # Defines what the AI can do
-├── heartbeat.py         # Autonomous check-ins
-└── models.py            # Data structures (User, Task, etc.)
+├── api/                # API Gateway & Endpoints
+├── channels/           # Telegram/WhatsApp Adapters
+├── core/               # Brain, Model Router, Self Model
+├── services/           # Calendar, Storage, Tasks
+├── config.py           # Environment Variables
+├── db.py               # Database Client
+└── main.py             # Entry point
 ```
 
 ---
 
-## Environment Variables (Secrets)
+## Key Features
 
-These are stored in `.env` locally and on Render:
-
-- `OPENAI_API_KEY`: Your OpenAI account key
-- `SUPABASE_URL`: Your database URL
-- `SUPABASE_SERVICE_ROLE_KEY`: Database admin key
-- `TELEGRAM_BOT_TOKEN`: Your bot's unique ID
-- `APP_BASE_URL`: Where your app is hosted (Render URL)
+-   **Multi-Model Cost Savings**: Doesn't waste expensive models on "Hello".
+-   **Privacy**: Files are stored in your own isolated bucket.
+-   **Extensibility**: Easy to add WhatsApp or Email support later.
+-   **Resilience**: If one tool fails, the Brain can recover and apologize.
 
 ---
 
-## Common Issues & Fixes
+## How to Deploy
 
-### Bot receives messages but doesn't respond
-- **Cause**: Old token on Render
-- **Fix**: Update `TELEGRAM_BOT_TOKEN` in Render's Environment tab
-
-### "404 Not Found" in logs
-- **Not an error**: Someone tried to visit your URL directly
-- **Ignore it**: Your bot only responds to `/telegram/webhook`
-
-### OpenAI errors
-- **Check**: Your API key is valid and has credits
-- **Check**: Logs for "OpenAI API error"
-
-### Database errors
-- **Check**: Supabase URL and keys are correct
-- **Check**: Tables were created via `setup.sql`
-
----
-
-## How to Debug
-
-1. **Check Render Logs**:
-   - Go to Render Dashboard → Your Service → Logs
-   - Look for errors after sending a test message
-
-2. **Run Local Tests**:
-   - `python test_bot.py` - Checks token, webhook, health
-   - `python test_full_flow.py` - Tests agent logic
-   - `python test_commands.py` - Tests slash commands
-
-3. **Check Database**:
-   - Go to Supabase Dashboard
-   - Table Editor → Check if data is being saved
-
----
-
-## The Flow in One Sentence
-
-**You message Telegram → Telegram webhooks to Render → Render calls the Agent → Agent asks OpenAI → OpenAI calls Tools → Tools update Database → Response goes back to Telegram → You see the reply.**
-
----
-
-## Next Steps
-
-- Set up a cron job to hit `/heartbeat/trigger` every hour
-- Customize the system prompt in `agent.py` to change personality
-- Add more tools in `tools.py` for new features
+1.  **Push to GitHub**: `git push origin main`
+2.  **Render**: Auto-deploys the new version.
+3.  **Database**: Run `setup_v2.sql` in Supabase to create the new tables.
