@@ -62,12 +62,11 @@ class OpenAIClient:
                 "input": inputs
             }
             
-            # Add tools if provided
+            # Only add tools if they exist and are not empty
             if tools:
                 api_args["tools"] = tools
             
-            # Don't send temperature parameter at all - let API use defaults
-            # The new API seems very strict about this
+            # Don't send temperature parameter at all - GPT-5 is strict about this
             
             # 3. Call Responses API
             response = client.responses.create(**api_args)
