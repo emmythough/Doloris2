@@ -98,6 +98,16 @@ class Brain:
             return response
         
         except Exception as e:
+            # Log error for R.D diagnosis
+            import sys
+            from app.middleware import log_error
+            
+            try:
+                error_signature = log_error(type(e), e, sys.exc_info()[2], service='brain')
+                logger.error(f"[BRAIN] 🔖 Error signature: {error_signature}")
+            except Exception as log_err:
+                logger.error(f"[BRAIN] ⚠️ Failed to log error: {log_err}")
+            
             logger.error(f"[BRAIN] ❌ ERROR: {e}", exc_info=True)
             
             # Return a helpful error message instead of a generic one
@@ -235,6 +245,16 @@ class Brain:
             return content
             
         except Exception as e:
+            # Log error for R.D diagnosis  
+            import sys
+            from app.middleware import log_error
+            
+            try:
+                error_signature = log_error(type(e), e, sys.exc_info()[2], service='openai_client')
+                logger.error(f"[BRAIN] 🔖 Error signature: {error_signature}")
+            except Exception as log_err:
+                logger.error(f"[BRAIN] ⚠️ Failed to log error: {log_err}")
+            
             logger.error(f"[BRAIN] ❌ Error calling OpenAI: {e}", exc_info=True)
             return "I'm having trouble thinking right now. Please try again in a moment."
 

@@ -3,6 +3,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
 
+# Existing Models
+
 class Role(str, Enum):
     USER = "user"
     ASSISTANT = "assistant"
@@ -13,6 +15,8 @@ class TaskStatus(str, Enum):
     IN_PROGRESS = "in_progress"
     DONE = "done"
     DELETED = "deleted"
+    COMPLETED = "completed"  # Added for consistency
+    CANCELLED = "cancelled"  # Added for consistency
 
 class User(BaseModel):
     id: str
@@ -57,3 +61,62 @@ class Instruction(BaseModel):
     content: str
     is_active: bool = True
     created_at: Optional[datetime] = None
+
+# NEW: R.D 2.1 and Doloris 2.0 Models
+
+class ErrorLog(BaseModel):
+    """Error tracking for R.D diagnosis"""
+    id: str
+    error_signature: str
+    stack_trace: Optional[str] = None
+    service: str = "doloris"
+    created_at: datetime
+    count: int = 1
+    last_seen_at: datetime
+
+class RepairTicketStatus(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    AWAITING_APPROVAL = "awaiting_approval"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    DONE = "done"
+    FAILED = "failed"
+
+class RepairTicket(BaseModel):
+    """Repair workflow tracking for R.D"""
+    id: str
+    created_at: datetime
+    updated_at: datetime
+    status: RepairTicketStatus = RepairTicketStatus.PENDING
+    instruction: str
+    error_signature: Optional[str] = None
+    pr_id: Optional[str] = None
+    branch_name: Optional[str] = None
+    summary: Optional[str] = None
+
+class RepairAttemptStatus(str, Enum):
+    DIAGNOSING = "diagnosing"
+    REPRODUCING = "reproducing"
+    PATCHING = "patching"
+    VALIDATING = "validating"
+    FAILED = "failed"
+    SUCCESS = "success"
+
+class RepairAttempt(BaseModel):
+    """Individual repair attempt tracking"""
+    id: str
+    ticket_id: str
+    status: RepairAttemptStatus
+    attempt_no: int
+    logs: Optional[str] = None
+    created_at: datetime
+
+class Note(BaseModel):
+    """User notes with tagging"""
+    id: str
+    user_id: int
+    content: str
+    tags: List[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime

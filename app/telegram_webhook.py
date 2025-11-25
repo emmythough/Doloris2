@@ -114,6 +114,17 @@ async def telegram_webhook(request: Request):
         
     except Exception as e:
         duration = time.time() - start_time
+        
+        # Log error with deduplication for R.D diagnosis
+        import sys
+        from app.middleware import log_error
+        
+        try:
+            error_signature = log_error(type(e), e, sys.exc_info()[2], service='webhook')
+            logger.error(f"[WEBHOOK:{request_id}] 🔖 Error signature: {error_signature}")
+        except Exception as log_err:
+            logger.error(f"[WEBHOOK:{request_id}] ⚠️ Failed to log error: {log_err}")
+        
         logger.error(f"[WEBHOOK:{request_id}] ❌ ====== ERROR ======")
         logger.error(f"[WEBHOOK:{request_id}] ❌ ERROR TYPE: {type(e).__name__}")
         logger.error(f"[WEBHOOK:{request_id}] ❌ ERROR MESSAGE: {str(e)}")
