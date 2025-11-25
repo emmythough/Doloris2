@@ -54,7 +54,10 @@ class OpenAIClient:
                 else:
                     inputs.append({"role": role, "content": content})
 
-            logger.info(f"Calling OpenAI Responses API with model: {model}")
+            logger.info(f"[OPENAI] 🌐 Calling Responses API with model: {model}")
+            logger.info(f"[OPENAI] 📊 Inputs: {len(inputs)} messages")
+            if tools:
+                logger.info(f"[OPENAI] 🛠️ Tools: {len(tools)} available")
             
             # 2. Prepare arguments
             api_args = {
@@ -69,7 +72,10 @@ class OpenAIClient:
             # Don't send temperature parameter at all - GPT-5 is strict about this
             
             # 3. Call Responses API
+            logger.info(f"[OPENAI] 📡 Making API call...")
             response = client.responses.create(**api_args)
+            
+            logger.info(f"[OPENAI] ✅ Response received!")
             
             # 4. Parse output
             content_text = ""
@@ -78,9 +84,11 @@ class OpenAIClient:
             # Try to get text output
             if hasattr(response, 'output_text'):
                 content_text = response.output_text
+                logger.info(f"[OPENAI] 📝 Content: '{content_text[:100]}...'")
             
             # Parse output items for tool calls
             if hasattr(response, 'output'):
+                logger.info(f"[OPENAI] 🔍 Parsing {len(response.output)} output items...")
                 for item in response.output:
                     if hasattr(item, 'type') and item.type == "message":
                         if hasattr(item, 'content'):
@@ -93,9 +101,11 @@ class OpenAIClient:
                                             "arguments": part.function.arguments,
                                             "type": "tool_call"
                                         })
+                                        logger.info(f"[OPENAI] 🛠️ Tool call: {part.function.name}")
                                     elif part.type == "output_text" and not content_text:
                                         content_text += part.text
             
+            logger.info(f"[OPENAI] ✅ Parsed: {len(tool_calls)} tool calls")
             return {
                 "content": content_text,
                 "tool_calls": tool_calls if tool_calls else None

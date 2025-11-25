@@ -44,49 +44,61 @@ class Brain:
         Returns:
             Assistant's response text
         """
-        logger.info(f"Processing message from user {user_id}: {message[:50]}...")
+        logger.info(f"[BRAIN] 🧠 Processing message from user {user_id}: '{message[:50]}...'")
         
         try:
             # 1. Load user context
+            logger.info(f"[BRAIN] 📋 Loading user context...")
             user = DB.get_user_by_telegram_id(user_id)
             if not user:
+                logger.info(f"[BRAIN] 🆕 Creating new user for telegram_id={user_id}")
                 user = DB.create_user(user_id, name="User")
             
+            logger.info(f"[BRAIN] ✅ User loaded: id={user.id}")
+            
             # 2. Get user preferences
+            logger.info(f"[BRAIN] ⚙️ Loading preferences...")
             preferences = self._get_user_preferences(user.id)
             
             # 3. Build conversation context
+            logger.info(f"[BRAIN] 📝 Building context...")
             context = self._build_context(user.id, message, file_url, file_metadata)
             
             # 4. Select model tier
-            # Context is the full conversation text for analysis
             context_text = "\n".join([m["content"] for m in context["messages"] if isinstance(m["content"], str)])
             
+            logger.info(f"[BRAIN] 🔀 Selecting model...")
             model_tier = self.model_router.select_model(
                 message=message,
                 context=context_text,
-                has_tools=True,  # We always have tools available
+                has_tools=True,
                 user_preference=preferences.get("thinking_mode"),
                 file_attached=file_url is not None
             )
             model_name = self.model_router.get_model_name(model_tier)
+            logger.info(f"[BRAIN] ✅ Selected model: {model_name} (tier: {model_tier.value})")
             
             # 5. Call OpenAI
+            logger.info(f"[BRAIN] 🌐 Calling OpenAI...")
             response = await self._call_openai(
                 model_name=model_name,
                 messages=context["messages"],
-                tools=TOOLS_SCHEMA if model_tier != ModelTier.TIER_3 else None,  # o1 doesn't support tools yet
+                tools=TOOLS_SCHEMA if model_tier != ModelTier.TIER_3 else None,
                 user_id=user.id
             )
             
+            logger.info(f"[BRAIN] ✅ Got response: '{response[:100]}...'")
+            
             # 6. Save message
+            logger.info(f"[BRAIN] 💾 Saving messages to DB...")
             DB.add_message(user.id, "user", message)
             DB.add_message(user.id, "assistant", response)
             
+            logger.info(f"[BRAIN] ✅ Process complete!")
             return response
         
         except Exception as e:
-            logger.error(f"Brain error: {e}", exc_info=True)
+            logger.error(f"[BRAIN] ❌ ERROR: {e}", exc_info=True)
             return "I encountered an error processing your message. Please try again."
     
     def _get_user_preferences(self, user_id: int) -> Dict:
