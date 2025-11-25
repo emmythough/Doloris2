@@ -109,6 +109,13 @@ TOOLS_SCHEMA = [
     }
 ]
 
+# Tool Groupings by Intent
+TASK_TOOLS = [t for t in TOOLS_SCHEMA if t["name"] in ["add_task", "list_tasks", "complete_task", "delete_task", "update_task_status"]]
+NOTE_TOOLS = [t for t in TOOLS_SCHEMA if t["name"] in ["create_log", "update_instruction"]]
+FILE_TOOLS = [t for t in TOOLS_SCHEMA if t["name"] in ["create_log"]]  # File tools will be added in Phase 4
+ALL_TOOLS = TOOLS_SCHEMA
+
+
 # Tool Implementation Map
 def execute_tool(tool_name: str, args: dict, user_id: str):
     if tool_name == "add_task":

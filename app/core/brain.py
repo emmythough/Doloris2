@@ -1,7 +1,102 @@
 """
 Doloris Brain - Main conversation orchestrator
 
+Handles message processing with intent classification and model routing.
+"""
+
+import logging
+from typing import Dict, List, Optional
+from app.db import DB
+from app.openai_client import OpenAIClient
+from app.core.model_router import ModelRouter
+from app.core.self_model import get_self_model
+from app.core.tools_orchestrator import ToolsOrchestrator
+from app.user_brain.intent_classifier import get_intent_classifier
+from app.user_brain.admin_commands import handle_admin_command
+
+logger = logging.getLogger(__name__)
+
+class Brain:
+    """Main conversation orchestrator for Doloris"""
+    
+    def __init__(self):
+        self.openai_client = OpenAIClient()
+        self.model_router = ModelRouter()
+        self.self_model = get_self_model()
+        self.tools_orchestrator = ToolsOrchestrator()
+        self.intent_classifier = get_intent_classifier()
+        logger.info("[BRAIN] 🧠 Brain initialized")
+    
+    async def process_message(
+        self,
+        user_id: int,
+        message: str,
+        file_url: Optional[str] = None,
+        file_metadata: Optional[Dict] = None
+    ) -> str:
+        """
+        Main entry point for processing user messages
         
+        Flow:
+        1. Classify intent (task, chat, file, admin, note)
+        2. Route admin commands to admin handler
+        3. Build context for other intents
+        4. Select appropriate model
+        5. Call OpenAI with tools
+        6. Return response
+        """
+        logger.info(f"[BRAIN] 📥 Processing message from user {user_id}: '{message[:50]}...'")
+        
+        try:
+            # Step 1: Classify intent
+            intent_result = await self.intent_classifier.classify(message)
+            intent = intent_result.get("intent", "chat")
+            command = intent_result.get("command")
+            
+            logger.info(f"[BRAIN] 🎯 Intent: {intent}, Command: {command}")
+            
+            # Step 2: Handle admin commands separately
+            if intent == "admin":
+                logger.info(f"[BRAIN] 🔧 Routing to admin handler")
+                return await handle_admin_command(command or message, message, user_id)
+            
+            # Step 3: Build context for normal processing
+            context = await self._build_context(
+                user_id=user_id,
+                message=message,
+                file_url=file_url,
+                file_metadata=file_metadata
+            )
+            
+            # Step 4: Select model based on intent and context
+            has_tools = intent in ["task", "note"]  # These intents typically use tools
+            model_tier = self.model_router.select_model(
+                message=message,
+                context=str(context),
+                has_tools=has_tools,
+                file_attached=file_url is not None
+            )
+            model_name = self.model_router.get_model_name(model_tier)
+            
+            logger.info(f"[BRAIN] 🤖 Selected model: {model_name}")
+            
+            # Step 5: Get tools for this intent
+            tools = self.tools_orchestrator.get_tools_for_intent(intent)
+            
+            # Step 6: Call OpenAI
+            response = await self._call_openai(
+                model_name=model_name,
+                messages=context["messages"],
+                tools=tools,
+                user_id=user_id
+            )
+            
+            # Step 7: Save message to history
+            DB.save_message(user_id, "user", message)
+            DB.save_message(user_id, "assistant", response)
+            
+            return response
+            
         except Exception as e:
             # Log error for R.D diagnosis
             import sys
@@ -25,6 +120,15 @@ Doloris Brain - Main conversation orchestrator
             elif "timeout" in error_msg:
                 return "That took too long to process. Could you try again with a simpler request?"
             else:
+                return "I encountered an unexpected issue. Please try again or rephrase your message."
+    
+    async def _build_context(
+        self,
+        user_id: int,
+        message: str,
+        file_url: Optional[str] = None,
+        file_metadata: Optional[Dict] = None
+    ) -> Dict:
         """Build conversation context for OpenAI"""
         
         # System prompt with self-model
@@ -91,6 +195,28 @@ Doloris Brain - Main conversation orchestrator
                         response["tool_calls"],
                         user_id
                     )
+                    
+                    # Add tool results to messages
+                    messages.append({
+                        "role": "assistant",
+                        "content": response.get("content"),
+                        "tool_calls": response["tool_calls"]
+                    })
+                    
+                    for result in tool_results:
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": result["tool_call_id"],
+                            "content": result["content"]
+                        })
+                    
+                    # Get final response
+                    final_response = await self.openai_client.chat_completion(
+                        model=model_name,
+                        messages=messages,
+                        tools=None  # No more tools
+                    )
+                    
                     # Get final content, ensure it's not empty
                     final_content = final_response.get("content", "").strip()
                     if not final_content:

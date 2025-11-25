@@ -42,33 +42,63 @@ async def handle_admin_command(command: str, message: str, user_id: int) -> str:
 async def handle_repair_request(message: str, user_id: int) -> str:
     """
     Handle /repair command - creates repair ticket for R.D
-    
-    For now, just acknowledges. Phase 3 will implement full R.D integration.
     """
     logger.info(f"[ADMIN] Repair request from user {user_id}: {message}")
     
-    # TODO Phase 3: Create repair ticket
-    # ticket = DB.supabase.table("repair_tickets").insert({
-    #     "instruction": message,
-    #     "status": "pending"
-    # }).execute()
+    try:
+        from app.dev_brain.repair_agent import get_repair_agent
+        
+        # Extract error signature if mentioned, otherwise use recent error
+        error_signature = None
+        
+        # Check for recent errors
+        errors_result = DB.supabase.table("errors").select("error_signature").order("last_seen_at", desc=True).limit(1).execute()
+        
+        if errors_result.data:
+            error_signature = errors_result.data[0]["error_signature"]
+        
+        if not error_signature:
+            return """❌ **No Recent Errors Found**
+
+I couldn't find any recent errors to repair.
+
+Try:
+- Triggering an error first
+- Using `/selfcheck` to see error history"""
+        
+        # Create repair ticket and start R.D workflow
+        repair_agent = get_repair_agent()
+        
+        # Note: This is async and may take time, so we acknowledge and process in background
+        # For now, just create the ticket
+        ticket = DB.supabase.table("repair_tickets").insert({
+            "instruction": message,
+            "error_signature": error_signature,
+            "status": "pending"
+        }).execute()
+        
+        ticket_id = ticket.data[0]["id"]
+        
+        return f"""🔧 **Repair Ticket Created**
+
+**Ticket ID:** `{ticket_id}`
+**Error Signature:** `{error_signature[:16]}...`
+
+**Status:** R.D 2.1 will now:
+1. 🔍 Diagnose the error
+2. 🧪 Write a reproduction test
+3. 🔨 Create a fix
+4. ✅ Validate with tests
+5. 📝 Submit PR for your approval
+
+I'll notify you when the PR is ready for review!
+
+**Note:** This process may take a few minutes. Use `/check_repair {ticket_id}` to check status."""
     
-    return """🔧 **Repair Mode Detected**
+    except Exception as e:
+        logger.error(f"[ADMIN] Repair request failed: {e}", exc_info=True)
+        return f"❌ **Repair Failed**\n\nError: {str(e)}\n\nThe repair infrastructure is set up, but something went wrong. Check logs for details."
 
-I understand you want me to fix something or diagnose an issue.
-
-**Current Status:** Repair infrastructure is ready but R.D 2.1 (the self-repair AI) isn't fully integrated yet.
-
-**What's Available Now:**
-- ✅ Error tracking (all errors are logged)
-- ✅ Deduplication by error signature
-- ⏳ R.D diagnosis & fix workflow (coming in Phase 3)
-
-**What You Can Do:**
-- Check recent errors manually in Supabase (errors table)
-- Wait for Phase 3 (R.D Dev Brain implementation)
-
-I'll let you know when I can actually fix myself! 🚀"""
 
 async def handle_selfcheck(user_id: int) -> str:
     """

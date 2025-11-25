@@ -13,7 +13,7 @@ Your bot receives messages (200 OK) but doesn't respond because Render is using 
 1. Click the **"Environment"** tab on the left
 2. Find `TELEGRAM_BOT_TOKEN`
 3. Click **Edit** (pencil icon)
-4. Replace with: `8056668190:AAGTRIDB7Y6tZKIXSRfsTx6YSsG_TTeO3b8`
+4. Replace with your new token from BotFather
 5. Click **Save Changes**
 
 ### Step 3: Wait for Redeploy

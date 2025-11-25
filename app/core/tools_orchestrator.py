@@ -24,6 +24,33 @@ class ToolsOrchestrator:
     }
     
     @staticmethod
+    def get_tools_for_intent(intent: str) -> List[Dict]:
+        """
+        Get appropriate tools based on user intent
+        
+        Args:
+            intent: User intent (task, chat, file, admin, note)
+        
+        Returns:
+            List of tool definitions for OpenAI
+        """
+        from app.tools import TASK_TOOLS, NOTE_TOOLS, FILE_TOOLS, ALL_TOOLS
+        
+        if intent == "task":
+            return TASK_TOOLS
+        elif intent == "note":
+            return NOTE_TOOLS
+        elif intent == "file":
+            return FILE_TOOLS
+        elif intent == "chat":
+            # Chat can use any tool
+            return ALL_TOOLS
+        else:
+            # Default: all tools
+            return ALL_TOOLS
+
+    
+    @staticmethod
     def execute_tool(tool_name: str, arguments: Dict[str, Any], user_id: int) -> Dict[str, Any]:
         """
         Execute a tool call from OpenAI
