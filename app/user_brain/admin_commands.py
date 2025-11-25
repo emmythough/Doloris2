@@ -140,12 +140,12 @@ Found {len(errors_result.data)} recent error types:
 **What This Means:**
 - Errors are being tracked ✅
 - Some issues occurred but system is resilient ✅
-- R.D can investigate these when integrated (Phase 3) ⏳
+- R.D can investigate these now! Use `/repair` to start. 🤖
 
 **Current Status:**
-- Message processing: ✅ Working (you're talking to me!)
+- Message processing: ✅ Working
 - Error tracking: ✅ Active
-- Self-repair: ⏳ Coming soon (Phase 3)"""
+- Self-repair: ✅ Active (R.D 2.1)"""
         
     except Exception as e:
         logger.error(f"[ADMIN] Selfcheck failed: {e}", exc_info=True)
@@ -168,12 +168,12 @@ I can see you want me to investigate something!
 - I can log errors and track them
 - I can tell you about recent errors (/selfcheck)
 
-**Coming Soon (Phase 3):**
-- R.D will be able to:
-  - Read error logs
-  - Trace through code
-  - Write tests
-  - Create fixes
-  - Submit PRs
+**R.D 2.1 is Active!**
+R.D is now fully integrated and can:
+- 🔍 Read error logs
+- 🧪 Trace through code & write tests
+- 🔨 Create fixes & submit PRs
 
-For now, use `/selfcheck` to see recent errors, or check the Supabase `errors` table directly."""
+**How to use:**
+- Use `/repair` to trigger a full repair workflow for the most recent error
+- Use `/selfcheck` to see system health status"""
