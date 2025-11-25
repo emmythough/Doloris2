@@ -6,3 +6,7 @@ openai
 pydantic
 requests
 python-telegram-bot
+httpx
+PyGithub
+pytest
+pytest-asyncio
