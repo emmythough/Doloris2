@@ -30,6 +30,43 @@ TOOLS_SCHEMA = [
     },
     {
         "type": "function",
+        "name": "complete_task",
+        "description": "Mark a task as complete. Use this when the user says they finished something or asks to mark a task done.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "The UUID of the task to complete."}
+            },
+            "required": ["task_id"]
+        }
+    },
+    {
+        "type": "function",
+        "name": "delete_task",
+        "description": "Permanently delete a task. Use when user wants to remove or cancel a task entirely.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "The UUID of the task to delete."}
+            },
+            "required": ["task_id"]
+        }
+    },
+    {
+        "type": "function",
+        "name": "update_task_status",
+        "description": "Update a task's status. Use to mark tasks as todo, in_progress, completed, or cancelled.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "The UUID of the task to update."},
+                "status": {"type": "string", "description": "New status: 'todo', 'in_progress', 'completed', or 'cancelled'."}
+            },
+            "required": ["task_id", "status"]
+        }
+    },
+    {
+        "type": "function",
         "name": "update_instruction",
         "description": "Update or add a behavioral instruction for the assistant.",
         "parameters": {
@@ -82,7 +119,29 @@ def execute_tool(tool_name: str, args: dict, user_id: str):
         tasks = DB.get_pending_tasks(user_id)
         if not tasks:
             return "No pending tasks."
-        return "\n".join([f"- {t.title} (Status: {t.status.value})" for t in tasks])
+        return "\n".join([f"- {t.title} (ID: {t.id}, Status: {t.status.value})" for t in tasks])
+    
+    elif tool_name == "complete_task":
+        task_id = args.get("task_id")
+        result = DB.supabase.table("tasks").update({"status": "completed"}).eq("id", task_id).eq("user_id", user_id).execute()
+        if result.data:
+            return f"Task completed: {result.data[0].get('title', task_id)}"
+        return f"Task not found: {task_id}"
+    
+    elif tool_name == "delete_task":
+        task_id = args.get("task_id")
+        result = DB.supabase.table("tasks").delete().eq("id", task_id).eq("user_id", user_id).execute()
+        if result.data:
+            return f"Task deleted: {result.data[0].get('title', task_id)}"
+        return f"Task not found: {task_id}"
+    
+    elif tool_name == "update_task_status":
+        task_id = args.get("task_id")
+        status = args.get("status")
+        result = DB.supabase.table("tasks").update({"status": status}).eq("id", task_id).eq("user_id", user_id).execute()
+        if result.data:
+            return f"Task status updated to '{status}': {result.data[0].get('title', task_id)}"
+        return f"Task not found: {task_id}"
         
     elif tool_name == "update_instruction":
         instruction = DB.update_instruction(user_id, **args)

@@ -5,7 +5,7 @@ Routes requests to appropriate endpoints.
 """
 
 from fastapi import FastAPI
-from app.api.endpoints import message, file, tools
+from app.api.endpoints import message, file, tools, diagnostic
 from app.telegram_webhook import router as telegram_router
 from app.heartbeat import router as heartbeat_router
 
@@ -15,6 +15,7 @@ app = FastAPI(title="Doloris 2.0 API")
 app.include_router(message.router, prefix="/api/v1", tags=["messages"])
 app.include_router(file.router, prefix="/api/v1", tags=["files"])
 app.include_router(tools.router, prefix="/api/v1/tools", tags=["tools"])
+app.include_router(diagnostic.router, prefix="/diagnostic", tags=["diagnostic"])
 app.include_router(telegram_router, prefix="/telegram", tags=["telegram"])
 app.include_router(heartbeat_router, prefix="/heartbeat", tags=["heartbeat"])
 
@@ -25,3 +26,4 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
