@@ -51,7 +51,7 @@ class ToolsOrchestrator:
 
     
     @staticmethod
-    def execute_tool(tool_name: str, arguments: Dict[str, Any], user_id: int) -> Dict[str, Any]:
+    def execute_tool(tool_name: str, arguments: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """
         Execute a tool call from OpenAI
         
@@ -100,7 +100,7 @@ class ToolsOrchestrator:
             return {"error": str(e)}
     
     @staticmethod
-    def _add_task(user_id: int, args: Dict, db) -> Dict:
+    def _add_task(user_id: str, args: Dict, db) -> Dict:
         """Add a task"""
         task = db.add_task(
             user_id=user_id,
@@ -111,7 +111,7 @@ class ToolsOrchestrator:
         return {"success": True, "task_id": task.id if task else None}
     
     @staticmethod
-    def _list_tasks(user_id: int, db) -> Dict:
+    def _list_tasks(user_id: str, db) -> Dict:
         """List pending tasks"""
         tasks = db.get_pending_tasks(user_id)
         return {
@@ -120,7 +120,7 @@ class ToolsOrchestrator:
         }
     
     @staticmethod
-    def _update_instruction(user_id: int, args: Dict, db) -> Dict:
+    def _update_instruction(user_id: str, args: Dict, db) -> Dict:
         """Update user instruction"""
         instruction = db.update_instruction(
             user_id=user_id,
@@ -129,7 +129,7 @@ class ToolsOrchestrator:
         return {"success": True, "instruction_id": instruction.id if instruction else None}
     
     @staticmethod
-    def _create_log(user_id: int, args: Dict, db) -> Dict:
+    def _create_log(user_id: str, args: Dict, db) -> Dict:
         """Create a log entry"""
         log = db.create_log(
             user_id=user_id,
@@ -139,7 +139,7 @@ class ToolsOrchestrator:
         return {"success": True, "log_id": log.id if log else None}
     
     @staticmethod
-    def execute_batch(tool_calls: List[Dict], user_id: int) -> List[Dict]:
+    def execute_batch(tool_calls: List[Dict], user_id: str) -> List[Dict]:
         """Execute multiple tool calls"""
         results = []
         for tool_call in tool_calls:
