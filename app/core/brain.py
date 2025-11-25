@@ -33,29 +33,6 @@ class Brain:
         file_metadata: Optional[Dict] = None
     ) -> str:
         """
-        Process a user message and return a response
-        
-        Args:
-            user_id: Telegram user ID
-            message: User's message text
-            file_url: Optional file URL if user sent a file
-            file_metadata: Optional file metadata (name, type, size)
-        
-        Returns:
-            Assistant's response text
-        """
-        logger.info(f"[BRAIN] 🧠 Processing message from user {user_id}: '{message[:50]}...'")
-        
-        try:
-            # 1. Load user context
-            logger.info(f"[BRAIN] 📋 Loading user context...")
-            user = DB.get_user_by_telegram_id(user_id)
-            if not user:
-                logger.info(f"[BRAIN] 🆕 Creating new user for telegram_id={user_id}")
-                user = DB.create_user(user_id, name="User")
-            
-            logger.info(f"[BRAIN] ✅ User loaded: id={user.id}")
-            
             # 2. Get user preferences
             logger.info(f"[BRAIN] ⚙️ Loading preferences...")
             preferences = self._get_user_preferences(user.id)
@@ -120,25 +97,6 @@ class Brain:
             elif "timeout" in error_msg:
                 return "That took too long to process. Could you try again with a simpler request?"
             else:
-                return "I encountered an unexpected error. I'm still here though - feel free to try something else!"
-    
-    def _get_user_preferences(self, user_id: int) -> Dict:
-        """Get user preferences from database"""
-        try:
-            result = DB.supabase.table("preferences").select("*").eq("user_id", user_id).execute()
-            if result.data and len(result.data) > 0:
-                return result.data[0]
-            return {}
-        except:
-            return {}
-    
-    def _build_context(
-        self,
-        user_id: int,
-        message: str,
-        file_url: Optional[str],
-        file_metadata: Optional[Dict]
-    ) -> Dict:
         """Build conversation context for OpenAI"""
         
         # System prompt with self-model
