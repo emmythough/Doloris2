@@ -88,7 +88,18 @@ class OpenAIClient:
                     item_type = getattr(item, 'type', None)
                     logger.info(f"[OPENAI] 📦 Output item type: {item_type}")
                     
-                    if item_type == "message":
+                    # Handle direct function calls (ResponseFunctionToolCall)
+                    if item_type == "function_call":
+                        tool_calls.append({
+                            "id": getattr(item, 'call_id', getattr(item, 'id', None)),
+                            "name": getattr(item, 'name', ''),
+                            "arguments": getattr(item, 'arguments', '{}'),
+                            "type": "tool_call"
+                        })
+                        logger.info(f"[OPENAI] 🛠️ Function call: {getattr(item, 'name', 'unknown')}")
+                    
+                    # Handle message items with content
+                    elif item_type == "message":
                         if hasattr(item, 'content') and item.content:
                             for part in item.content:
                                 part_type = getattr(part, 'type', None)
@@ -108,6 +119,10 @@ class OpenAIClient:
                                     if text:
                                         content_text += text
                                         logger.info(f"[OPENAI] 📝 Added text: '{text[:100]}...'")
+                    
+                    # Skip reasoning items (internal thinking)
+                    elif item_type == "reasoning":
+                        logger.info(f"[OPENAI] 🧠 Skipping reasoning item")
             
             # Fallback: try output_text attribute (older API format)
             if not content_text and hasattr(response, 'output_text') and response.output_text:
