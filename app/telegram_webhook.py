@@ -89,6 +89,13 @@ async def telegram_webhook(request: Request):
             return {"status": "error", "message": "no_chat_id"}
         
         logger.info(f"[WEBHOOK:{request_id}] 📤 STEP 3/4: Sending response to chat_id={chat_id}")
+        
+        # CRITICAL SAFETY CHECK: Never send empty messages to Telegram
+        if not response_text or not response_text.strip():
+            logger.error(f"[WEBHOOK:{request_id}] ❌ Brain returned empty response!")
+            logger.error(f"[WEBHOOK:{request_id}] ❌ This is a bug - using fallback message")
+            response_text = "I processed your message, but I'm having trouble formulating a response. Could you try rephrasing that?"
+        
         send_start = time.time()
         
         send_result = await adapter.send_message(chat_id, response_text)

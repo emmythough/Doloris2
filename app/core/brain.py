@@ -99,7 +99,18 @@ class Brain:
         
         except Exception as e:
             logger.error(f"[BRAIN] ❌ ERROR: {e}", exc_info=True)
-            return "I encountered an error processing your message. Please try again."
+            
+            # Return a helpful error message instead of a generic one
+            error_msg = str(e).lower()
+            
+            if "openai" in error_msg or "api" in error_msg:
+                return "I'm having trouble connecting to my AI service right now. Please try again in a moment."
+            elif "database" in error_msg or "supabase" in error_msg:
+                return "I'm having trouble accessing my memory right now. Your message was received, but I couldn't process it fully."
+            elif "timeout" in error_msg:
+                return "That took too long to process. Could you try again with a simpler request?"
+            else:
+                return "I encountered an unexpected error. I'm still here though - feel free to try something else!"
     
     def _get_user_preferences(self, user_id: int) -> Dict:
         """Get user preferences from database"""
@@ -166,56 +177,66 @@ class Brain:
     ) -> str:
         """Call OpenAI and handle tool calls"""
         
-        # Initial call (no temperature - GPT-5 only supports default)
-        response = await self.openai_client.chat_completion(
-            model=model_name,
-            messages=messages,
-            tools=tools
-        )
-        
-        # Check for tool calls
-        if response.get("tool_calls"):
-            logger.info(f"Tool calls requested: {len(response['tool_calls'])}")
-            
-            # Execute tools
-            tool_results = self.tools_orchestrator.execute_batch(
-                response["tool_calls"],
-                user_id
-            )
-            
-            # Add tool results to messages
-            # IMPORTANT: content can be None when using tools, use empty string as fallback
-            initial_content = response.get("content") or ""
-            messages.append({"role": "assistant", "content": initial_content, "tool_calls": response["tool_calls"]})
-            for result in tool_results:
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": result["tool_call_id"],
-                    "content": str(result["result"])
-                })
-            
-            # Call OpenAI again with tool results (no temperature)
-            final_response = await self.openai_client.chat_completion(
+        try:
+            # Initial call (no temperature - GPT-5 only supports default)
+            response = await self.openai_client.chat_completion(
                 model=model_name,
                 messages=messages,
                 tools=tools
             )
             
-            # Get final content, ensure it's not empty
-            final_content = final_response.get("content", "").strip()
-            if not final_content:
-                logger.warning("OpenAI returned empty content after tool execution")
-                return "I've completed the task!"
+            # Check for tool calls
+            if response.get("tool_calls"):
+                logger.info(f"[BRAIN] 🛠️ Tool calls requested: {len(response['tool_calls'])}")
+                
+                try:
+                    # Execute tools
+                    tool_results = self.tools_orchestrator.execute_batch(
+                        response["tool_calls"],
+                        user_id
+                    )
+                    
+                    # Add tool results to messages
+                    # IMPORTANT: content can be None when using tools, use empty string as fallback
+                    initial_content = response.get("content") or ""
+                    messages.append({"role": "assistant", "content": initial_content, "tool_calls": response["tool_calls"]})
+                    for result in tool_results:
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": result["tool_call_id"],
+                            "content": str(result["result"])
+                        })
+                    
+                    # Call OpenAI again with tool results (no temperature)
+                    final_response = await self.openai_client.chat_completion(
+                        model=model_name,
+                        messages=messages,
+                        tools=tools
+                    )
+                    
+                    # Get final content, ensure it's not empty
+                    final_content = final_response.get("content", "").strip()
+                    if not final_content:
+                        logger.warning("[BRAIN] ⚠️ OpenAI returned empty content after tool execution")
+                        return "I've completed that task for you!"
+                    
+                    return final_content
+                    
+                except Exception as tool_error:
+                    logger.error(f"[BRAIN] ❌ Error executing tools: {tool_error}", exc_info=True)
+                    return "I tried to perform that action, but ran into an issue. The task might not have completed."
             
-            return final_content
-        
-        # No tool calls - return direct response
-        content = response.get("content", "").strip()
-        if not content:
-            logger.warning("OpenAI returned empty content (no tools)")
-            return "I'm not sure how to respond to that."
-        
-        return content
+            # No tool calls - return direct response
+            content = response.get("content", "").strip()
+            if not content:
+                logger.warning("[BRAIN] ⚠️ OpenAI returned empty content (no tools)")
+                return "I'm not sure how to respond to that. Could you rephrase?"
+            
+            return content
+            
+        except Exception as e:
+            logger.error(f"[BRAIN] ❌ Error calling OpenAI: {e}", exc_info=True)
+            return "I'm having trouble thinking right now. Please try again in a moment."
 
 # Singleton instance
 _brain = None
