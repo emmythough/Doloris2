@@ -37,17 +37,26 @@ class Brain:
         """
         Main entry point for processing user messages
         
-        Flow:
-        1. Classify intent (task, chat, file, admin, note)
-        2. Route admin commands to admin handler
-        3. Build context for other intents
-        4. Select appropriate model
-        5. Call OpenAI with tools
-        6. Return response
+        Args:
+            user_id: Telegram User ID (integer)
+            message: User message text
+            file_url: Optional URL to file
+            file_metadata: Optional file metadata
         """
-        logger.info(f"[BRAIN] 📥 Processing message from user {user_id}: '{message[:50]}...'")
+        telegram_id = user_id
+        logger.info(f"[BRAIN] 📥 Processing message from telegram_id {telegram_id}: '{message[:50]}...'")
         
         try:
+            # Step 0: Resolve Telegram ID to User UUID
+            user = DB.get_user_by_telegram_id(telegram_id)
+            if not user:
+                logger.info(f"[BRAIN] 👤 New user detected: {telegram_id}")
+                user = DB.create_user(telegram_id=telegram_id)
+            
+            # Use internal UUID for all DB operations
+            internal_user_id = user.id
+            logger.info(f"[BRAIN] 🆔 Resolved to internal user_id: {internal_user_id}")
+            
             # Step 1: Classify intent
             intent_result = await self.intent_classifier.classify(message)
             intent = intent_result.get("intent", "chat")
@@ -58,18 +67,19 @@ class Brain:
             # Step 2: Handle admin commands separately
             if intent == "admin":
                 logger.info(f"[BRAIN] 🔧 Routing to admin handler")
-                return await handle_admin_command(command or message, message, user_id)
+                # Pass telegram_id to admin commands as they might need it for auth checks
+                return await handle_admin_command(command or message, message, telegram_id)
             
-            # Step 3: Build context for normal processing
+            # Step 3: Build context using UUID
             context = await self._build_context(
-                user_id=user_id,
+                user_id=internal_user_id,
                 message=message,
                 file_url=file_url,
                 file_metadata=file_metadata
             )
             
             # Step 4: Select model based on intent and context
-            has_tools = intent in ["task", "note"]  # These intents typically use tools
+            has_tools = intent in ["task", "note"]
             model_tier = self.model_router.select_model(
                 message=message,
                 context=str(context),
@@ -88,12 +98,12 @@ class Brain:
                 model_name=model_name,
                 messages=context["messages"],
                 tools=tools,
-                user_id=user_id
+                user_id=internal_user_id
             )
             
             # Step 7: Save message to history
-            DB.save_message(user_id, "user", message)
-            DB.save_message(user_id, "assistant", response)
+            DB.add_message(internal_user_id, "user", message)
+            DB.add_message(internal_user_id, "assistant", response)
             
             return response
             
@@ -110,7 +120,7 @@ class Brain:
             
             logger.error(f"[BRAIN] ❌ ERROR: {e}", exc_info=True)
             
-            # Return a helpful error message instead of a generic one
+            # Return a helpful error message
             error_msg = str(e).lower()
             
             if "openai" in error_msg or "api" in error_msg:
@@ -124,7 +134,7 @@ class Brain:
     
     async def _build_context(
         self,
-        user_id: int,
+        user_id: str,
         message: str,
         file_url: Optional[str] = None,
         file_metadata: Optional[Dict] = None
@@ -173,12 +183,12 @@ class Brain:
         model_name: str,
         messages: List[Dict],
         tools: Optional[List[Dict]],
-        user_id: int
+        user_id: str
     ) -> str:
         """Call OpenAI and handle tool calls"""
         
         try:
-            # Initial call (no temperature - GPT-5 only supports default)
+            # Initial call
             response = await self.openai_client.chat_completion(
                 model=model_name,
                 messages=messages,
@@ -217,7 +227,7 @@ class Brain:
                         tools=None  # No more tools
                     )
                     
-                    # Get final content, ensure it's not empty
+                    # Get final content
                     final_content = final_response.get("content", "").strip()
                     if not final_content:
                         logger.warning("[BRAIN] ⚠️ OpenAI returned empty content after tool execution")
@@ -229,7 +239,7 @@ class Brain:
                     logger.error(f"[BRAIN] ❌ Error executing tools: {tool_error}", exc_info=True)
                     return "I tried to perform that action, but ran into an issue. The task might not have completed."
             
-            # No tool calls - return direct response
+            # No tool calls
             content = response.get("content", "").strip()
             if not content:
                 logger.warning("[BRAIN] ⚠️ OpenAI returned empty content (no tools)")
@@ -238,18 +248,9 @@ class Brain:
             return content
             
         except Exception as e:
-            # Log error for R.D diagnosis  
-            import sys
-            from app.middleware import log_error
-            
-            try:
-                error_signature = log_error(type(e), e, sys.exc_info()[2], service='openai_client')
-                logger.error(f"[BRAIN] 🔖 Error signature: {error_signature}")
-            except Exception as log_err:
-                logger.error(f"[BRAIN] ⚠️ Failed to log error: {log_err}")
-            
+            # Log error
             logger.error(f"[BRAIN] ❌ Error calling OpenAI: {e}", exc_info=True)
-            return "I'm having trouble thinking right now. Please try again in a moment."
+            raise e
 
 # Singleton instance
 _brain = None

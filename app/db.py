@@ -80,7 +80,7 @@ class DB:
         return [Task(**t) for t in response.data]
 
     @staticmethod
-    def get_active_instructions(user_id: int) -> List[Instruction]:
+    def get_active_instructions(user_id: str) -> List[Instruction]:
         """Get active instructions for a user"""
         try:
             response = supabase.table("instructions") \
