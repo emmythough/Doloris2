@@ -184,7 +184,9 @@ class Brain:
             )
             
             # Add tool results to messages
-            messages.append({"role": "assistant", "content": response.get("content"), "tool_calls": response["tool_calls"]})
+            # IMPORTANT: content can be None when using tools, use empty string as fallback
+            initial_content = response.get("content") or ""
+            messages.append({"role": "assistant", "content": initial_content, "tool_calls": response["tool_calls"]})
             for result in tool_results:
                 messages.append({
                     "role": "tool",
@@ -198,9 +200,22 @@ class Brain:
                 messages=messages,
                 tools=tools
             )
-            return final_response.get("content", "Done!")
+            
+            # Get final content, ensure it's not empty
+            final_content = final_response.get("content", "").strip()
+            if not final_content:
+                logger.warning("OpenAI returned empty content after tool execution")
+                return "I've completed the task!"
+            
+            return final_content
         
-        return response.get("content", "I'm not sure how to respond to that.")
+        # No tool calls - return direct response
+        content = response.get("content", "").strip()
+        if not content:
+            logger.warning("OpenAI returned empty content (no tools)")
+            return "I'm not sure how to respond to that."
+        
+        return content
 
 # Singleton instance
 _brain = None
