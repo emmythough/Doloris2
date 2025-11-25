@@ -81,31 +81,45 @@ class OpenAIClient:
             content_text = ""
             tool_calls = []
             
-            # Try to get text output
-            if hasattr(response, 'output_text'):
-                content_text = response.output_text
-                logger.info(f"[OPENAI] 📝 Content: '{content_text[:100]}...'")
-            
-            # Parse output items for tool calls
-            if hasattr(response, 'output'):
+            # Parse output items for both text and tool calls
+            if hasattr(response, 'output') and response.output:
                 logger.info(f"[OPENAI] 🔍 Parsing {len(response.output)} output items...")
                 for item in response.output:
-                    if hasattr(item, 'type') and item.type == "message":
-                        if hasattr(item, 'content'):
+                    item_type = getattr(item, 'type', None)
+                    logger.info(f"[OPENAI] 📦 Output item type: {item_type}")
+                    
+                    if item_type == "message":
+                        if hasattr(item, 'content') and item.content:
                             for part in item.content:
-                                if hasattr(part, 'type'):
-                                    if part.type == "tool_call":
-                                        tool_calls.append({
-                                            "id": part.id,
-                                            "name": part.function.name,
-                                            "arguments": part.function.arguments,
-                                            "type": "tool_call"
-                                        })
-                                        logger.info(f"[OPENAI] 🛠️ Tool call: {part.function.name}")
-                                    elif part.type == "output_text" and not content_text:
-                                        content_text += part.text
+                                part_type = getattr(part, 'type', None)
+                                logger.info(f"[OPENAI] 📄 Content part type: {part_type}")
+                                
+                                if part_type == "tool_call":
+                                    tool_calls.append({
+                                        "id": part.id,
+                                        "name": part.function.name,
+                                        "arguments": part.function.arguments,
+                                        "type": "tool_call"
+                                    })
+                                    logger.info(f"[OPENAI] 🛠️ Tool call: {part.function.name}")
+                                
+                                elif part_type == "output_text":
+                                    text = getattr(part, 'text', '')
+                                    if text:
+                                        content_text += text
+                                        logger.info(f"[OPENAI] 📝 Added text: '{text[:100]}...'")
             
-            logger.info(f"[OPENAI] ✅ Parsed: {len(tool_calls)} tool calls")
+            # Fallback: try output_text attribute (older API format)
+            if not content_text and hasattr(response, 'output_text') and response.output_text:
+                content_text = response.output_text
+                logger.info(f"[OPENAI] 📝 Used fallback output_text: '{content_text[:100]}...'")
+            
+            if not content_text and not tool_calls:
+                logger.warning(f"[OPENAI] ⚠️ Empty response! Response object: {response}")
+                logger.warning(f"[OPENAI] ⚠️ Has output: {hasattr(response, 'output')}")
+                logger.warning(f"[OPENAI] ⚠️ Has output_text: {hasattr(response, 'output_text')}")
+            
+            logger.info(f"[OPENAI] ✅ Final result: {len(content_text)} chars, {len(tool_calls)} tool calls")
             return {
                 "content": content_text,
                 "tool_calls": tool_calls if tool_calls else None
