@@ -175,4 +175,34 @@ def execute_tool(tool_name: str, args: dict, user_id: str):
         log = DB.create_log(user_id, **args)
         return f"Log created: {log.type} - {log.summary}"
         
+    elif tool_name == "search_logs":
+        # Simple search using ILIKE via Supabase
+        query = args.get("query", "")
+        response = DB.supabase.table("logs").select("*").ilike("summary", f"%{query}%").limit(5).execute()
+        logs = response.data
+        if not logs:
+            return "No logs found matching query."
+        return "\n".join([f"- [{l['created_at'][:10]}] {l['type']}: {l['summary']}" for l in logs])
+
+    elif tool_name == "get_trace":
+        from app.core.system_logger import system_logger
+        trace_id = args.get("trace_id")
+        events = system_logger.get_trace(trace_id)
+        if not events:
+            return f"No events found for trace {trace_id}"
+        return json.dumps(events, indent=2, default=str)
+
+    elif tool_name == "get_recent_errors":
+        # Query system_events for errors
+        response = DB.supabase.table("system_events")\
+            .select("*")\
+            .eq("status", "error")\
+            .order("created_at", desc=True)\
+            .limit(5)\
+            .execute()
+        errors = response.data
+        if not errors:
+            return "No recent errors found."
+        return "\n".join([f"- [{e['created_at']}] {e['trace_id']}: {e['data']}" for e in errors])
+        
     return f"Tool {tool_name} not found."

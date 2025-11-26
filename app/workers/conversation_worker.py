@@ -50,17 +50,41 @@ def process_conversation_job(job_data):
         
         system_logger.log_event(trace_id, "worker", "intent_classified", "info", intent_result)
 
+        # 1.5 Retrieve Context & History
+        from app.memory.retrieval import ContextRetriever
+        from app.memory.summarizer import RollingSummarizer
+        from app.db import DB
+        
+        # Context (Tasks, Logs)
+        context = ContextRetriever.get_context(user_id)
+        
+        # History (Recent Messages)
+        # Fetch last 20 messages
+        raw_history = DB.get_recent_messages(user_id, limit=20)
+        # Convert to Dict format for LLM
+        history_dicts = [{"role": m.role, "content": m.content} for m in raw_history]
+        
+        # Summarize if needed
+        # Note: We run this async
+        summarized_history = asyncio.run(RollingSummarizer.summarize(history_dicts))
+        
         # 2. Dispatch to Agent
         agent = None
-        if intent == "create_task" or intent == "list_tasks":
+        if intent == "create_task" or intent == "list_tasks" or intent == "complete_task":
             agent = TasksAgent(user_id)
+        elif intent == "log_entry":
+            from app.agents.notes import NotesAgent
+            agent = NotesAgent(user_id)
+        elif intent == "trace_query":
+            from app.agents.system import SystemAgent
+            agent = SystemAgent(user_id)
         elif intent == "dev_command":
             agent = DevCoordinatorAgent(user_id)
         else:
             agent = ChatAgent(user_id)
             
-        # Run Agent
-        response_text = asyncio.run(agent.run(message_text))
+        # Run Agent with Context & History
+        response_text = asyncio.run(agent.run(message_text, context=context, history=summarized_history))
         logger.info(f"Trace {trace_id} - Agent Response: {response_text[:50]}...")
         
         system_logger.log_event(trace_id, "worker", "agent_response", "info", {"response_length": len(response_text)})
