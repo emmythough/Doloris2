@@ -18,8 +18,12 @@ logger = logging.getLogger(__name__)
 @router.post("/webhook")
 async def telegram_webhook(request: Request):
     """Handle incoming Telegram updates"""
+    from app.core.system_logger import system_logger
+    
     start_time = time.time()
+    # Use request_id as trace_id for system logging
     request_id = f"req_{int(start_time * 1000)}"
+    trace_id = request_id
     
     logger.info(f"[WEBHOOK:{request_id}] ====== NEW REQUEST ======")
     
@@ -30,6 +34,15 @@ async def telegram_webhook(request: Request):
         # Log full payload for debugging
         logger.info(f"[WEBHOOK:{request_id}] 📥 RAW TELEGRAM PAYLOAD:")
         logger.info(f"[WEBHOOK:{request_id}] {json.dumps(data, indent=2)}")
+        
+        # Log to system logger
+        system_logger.log_event(
+            trace_id=trace_id,
+            component="webhook",
+            event_type="received",
+            status="info",
+            details={"payload_size": len(str(data))}
+        )
         
         # Extract message info for logging
         message_info = {
@@ -59,6 +72,13 @@ async def telegram_webhook(request: Request):
         if not user_id:
             logger.warning(f"[WEBHOOK:{request_id}] ⚠️ No user_id found, ignoring update")
             logger.warning(f"[WEBHOOK:{request_id}] ⚠️ RAW DATA: {json.dumps(data, indent=2)}")
+            system_logger.log_event(
+                trace_id=trace_id,
+                component="webhook",
+                event_type="ignored",
+                status="warning",
+                details={"reason": "no_user_id"}
+            )
             return {"status": "ignored", "reason": "no_user_id"}
         
         logger.info(f"[WEBHOOK:{request_id}] ✅ PARSED RESULT:")
@@ -75,7 +95,8 @@ async def telegram_webhook(request: Request):
             user_id=user_id,
             message=text,
             file_url=file_url,
-            file_metadata=file_metadata
+            file_metadata=file_metadata,
+            trace_id=trace_id
         )
         
         brain_duration = time.time() - brain_start
@@ -86,6 +107,13 @@ async def telegram_webhook(request: Request):
         chat_id = data.get("message", {}).get("chat", {}).get("id")
         if not chat_id:
             logger.error(f"[WEBHOOK:{request_id}] ❌ No chat_id found in payload!")
+            system_logger.log_event(
+                trace_id=trace_id,
+                component="webhook",
+                event_type="send_error",
+                status="error",
+                details={"error": "no_chat_id"}
+            )
             return {"status": "error", "message": "no_chat_id"}
         
         logger.info(f"[WEBHOOK:{request_id}] 📤 STEP 3/4: Sending response to chat_id={chat_id}")
@@ -95,6 +123,13 @@ async def telegram_webhook(request: Request):
             logger.error(f"[WEBHOOK:{request_id}] ❌ Brain returned empty response!")
             logger.error(f"[WEBHOOK:{request_id}] ❌ This is a bug - using fallback message")
             response_text = "I processed your message, but I'm having trouble formulating a response. Could you try rephrasing that?"
+            system_logger.log_event(
+                trace_id=trace_id,
+                component="webhook",
+                event_type="empty_response_fallback",
+                status="warning",
+                details={"reason": "brain_returned_empty"}
+            )
         
         send_start = time.time()
         
@@ -109,6 +144,14 @@ async def telegram_webhook(request: Request):
         logger.info(f"[WEBHOOK:{request_id}] ✅ STEP 4/4: COMPLETE!")
         logger.info(f"[WEBHOOK:{request_id}] ⏱️ TOTAL TIME: {total_duration:.2f}s")
         logger.info(f"[WEBHOOK:{request_id}] ====== REQUEST COMPLETE ======")
+        
+        system_logger.log_event(
+            trace_id=trace_id,
+            component="webhook",
+            event_type="complete",
+            status="success",
+            details={"duration": total_duration}
+        )
         
         return {"status": "ok", "request_id": request_id, "duration": total_duration}
         

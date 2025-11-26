@@ -35,9 +35,12 @@ async def handle_admin_command(command: str, message: str, user_id: int) -> str:
     
     elif "diagnose" in command.lower() or "investigate" in command.lower():
         return await handle_diagnose_request(message, user_id)
+        
+    elif command == "/trace" or "trace" in command.lower():
+        return await handle_trace_request(user_id)
     
     else:
-        return "I detected an admin command but I'm not sure how to handle it yet. Available: /repair, /selfcheck"
+        return "I detected an admin command but I'm not sure how to handle it yet. Available: /repair, /selfcheck, /trace"
 
 async def handle_repair_request(message: str, user_id: int) -> str:
     """
@@ -167,6 +170,7 @@ I can see you want me to investigate something!
 **Current Capabilities:**
 - I can log errors and track them
 - I can tell you about recent errors (/selfcheck)
+- I can show you the system trace for your messages (/trace)
 
 **R.D 2.1 is Active!**
 R.D is now fully integrated and can:
@@ -176,4 +180,29 @@ R.D is now fully integrated and can:
 
 **How to use:**
 - Use `/repair` to trigger a full repair workflow for the most recent error
-- Use `/selfcheck` to see system health status"""
+- Use `/selfcheck` to see system health status
+- Use `/trace` to see the log of your last message"""
+
+async def handle_trace_request(user_id: int) -> str:
+    """Handle /trace command"""
+    from app.core.system_logger import system_logger
+    from app.db import DB
+    
+    # Resolve user_id to UUID
+    user = DB.get_user_by_telegram_id(user_id)
+    if not user:
+        return "❌ User not found."
+        
+    traces = system_logger.get_recent_traces(limit=1, user_id=user.id)
+    if not traces:
+        return "❌ No recent traces found."
+        
+    trace_id = traces[0]['trace_id']
+    events = system_logger.get_trace(trace_id)
+    
+    lines = [f"🔍 **Trace: {trace_id}**"]
+    for event in events:
+        icon = "✅" if event['status'] == 'success' else "⚠️" if event['status'] == 'warning' else "❌" if event['status'] == 'error' else "ℹ️"
+        lines.append(f"{icon} [{event['component'].upper()}] {event['event_type']}")
+        
+    return "\n".join(lines)

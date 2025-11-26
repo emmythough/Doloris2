@@ -51,7 +51,7 @@ class ToolsOrchestrator:
 
     
     @staticmethod
-    def execute_tool(tool_name: str, arguments: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+    def execute_tool(tool_name: str, arguments: Dict[str, Any], user_id: str, trace_id: str = None) -> Dict[str, Any]:
         """
         Execute a tool call from OpenAI
         
@@ -59,44 +59,89 @@ class ToolsOrchestrator:
             tool_name: Name of the tool to execute
             arguments: Tool arguments from OpenAI
             user_id: User ID for context
+            trace_id: Optional trace ID for system logging
         
         Returns:
             Tool execution result
         """
+        from app.core.system_logger import system_logger
+        
         logger.info(f"Executing tool: {tool_name} for user {user_id}")
+        if trace_id:
+            system_logger.log_event(
+                trace_id=trace_id,
+                component="tools",
+                event_type="tool_execution_start",
+                status="info",
+                details={"tool": tool_name, "arguments": arguments},
+                user_id=user_id
+            )
         
         try:
             # Import services here to avoid circular imports
             from app.db import DB
             from app.services.storage_service import StorageService
             
+            result = None
+            
             # Route to appropriate service
             if tool_name == "add_task":
-                return ToolsOrchestrator._add_task(user_id, arguments, DB)
+                result = ToolsOrchestrator._add_task(user_id, arguments, DB)
             
             elif tool_name == "list_tasks":
-                return ToolsOrchestrator._list_tasks(user_id, DB)
+                result = ToolsOrchestrator._list_tasks(user_id, DB)
             
             elif tool_name == "update_instruction":
-                return ToolsOrchestrator._update_instruction(user_id, arguments, DB)
+                result = ToolsOrchestrator._update_instruction(user_id, arguments, DB)
             
             elif tool_name == "create_log":
-                return ToolsOrchestrator._create_log(user_id, arguments, DB)
+                result = ToolsOrchestrator._create_log(user_id, arguments, DB)
             
             elif tool_name == "create_supabase_bucket":
                 storage = StorageService()
-                return storage.create_user_bucket(user_id, arguments.get("is_public", False))
+                result = storage.create_user_bucket(user_id, arguments.get("is_public", False))
             
             elif tool_name == "store_file_metadata":
                 storage = StorageService()
-                return storage.store_file_metadata(user_id, arguments)
+                result = storage.store_file_metadata(user_id, arguments)
             
             else:
-                logger.error(f"Unknown tool: {tool_name}")
-                return {"error": f"Unknown tool: {tool_name}"}
+                error_msg = f"Unknown tool: {tool_name}"
+                logger.error(error_msg)
+                if trace_id:
+                    system_logger.log_event(
+                        trace_id=trace_id,
+                        component="tools",
+                        event_type="tool_execution_failed",
+                        status="error",
+                        details={"tool": tool_name, "error": error_msg},
+                        user_id=user_id
+                    )
+                return {"error": error_msg}
+            
+            # Log success
+            if trace_id:
+                system_logger.log_event(
+                    trace_id=trace_id,
+                    component="tools",
+                    event_type="tool_execution_success",
+                    status="success",
+                    details={"tool": tool_name, "result_summary": str(result)[:100]},
+                    user_id=user_id
+                )
+            return result
         
         except Exception as e:
             logger.error(f"Tool execution error: {e}", exc_info=True)
+            if trace_id:
+                system_logger.log_event(
+                    trace_id=trace_id,
+                    component="tools",
+                    event_type="tool_execution_error",
+                    status="error",
+                    details={"tool": tool_name, "error": str(e)},
+                    user_id=user_id
+                )
             return {"error": str(e)}
     
     @staticmethod
@@ -139,7 +184,7 @@ class ToolsOrchestrator:
         return {"success": True, "log_id": log.id if log else None}
     
     @staticmethod
-    def execute_batch(tool_calls: List[Dict], user_id: str) -> List[Dict]:
+    def execute_batch(tool_calls: List[Dict], user_id: str, trace_id: str = None) -> List[Dict]:
         """Execute multiple tool calls"""
         results = []
         for tool_call in tool_calls:
@@ -165,7 +210,8 @@ class ToolsOrchestrator:
             result = ToolsOrchestrator.execute_tool(
                 tool_name=tool_name,
                 arguments=args,
-                user_id=user_id
+                user_id=user_id,
+                trace_id=trace_id
             )
             results.append({
                 "tool_call_id": tool_id,
