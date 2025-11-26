@@ -152,28 +152,38 @@ class TelegramAdapter:
             return None
 
     async def send_message(self, chat_id: int, text: str):
-        """Send message back to Telegram"""
+        """Send message back to Telegram with fallback for formatting errors"""
         logger.info(f"[ADAPTER] 📤 Sending message to chat_id={chat_id}")
         logger.debug(f"[ADAPTER] Message length: {len(text)} chars")
-        logger.debug(f"[ADAPTER] Message preview: '{text[:100]}...'")
         
         async with httpx.AsyncClient(timeout=30.0) as client:
+            # Try with Markdown first
             payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
             
             try:
-                logger.info(f"[ADAPTER] 🌐 POSTing to {self.API_URL}/sendMessage")
+                logger.info(f"[ADAPTER] 🌐 POSTing to {self.API_URL}/sendMessage (Markdown)")
                 response = await client.post(f"{self.API_URL}/sendMessage", json=payload)
-                
-                logger.info(f"[ADAPTER] 📥 Response status: {response.status_code}")
-                logger.debug(f"[ADAPTER] Response body: {response.text}")
                 
                 if response.status_code == 200:
                     logger.info("[ADAPTER] ✅ Message sent successfully!")
                     return {"success": True, "response": response.json()}
-                else:
-                    logger.error(f"[ADAPTER] ❌ Failed to send message: {response.status_code}")
-                    logger.error(f"[ADAPTER] ❌ Error response: {response.text}")
-                    return {"success": False, "status": response.status_code, "error": response.text}
+                
+                # If Markdown fails (400), retry as plain text
+                if response.status_code == 400:
+                    logger.warning(f"[ADAPTER] ⚠️ Markdown failed ({response.text}). Retrying as plain text...")
+                    
+                    # Remove parse_mode to send as plain text
+                    payload.pop("parse_mode")
+                    response = await client.post(f"{self.API_URL}/sendMessage", json=payload)
+                    
+                    if response.status_code == 200:
+                        logger.info("[ADAPTER] ✅ Message sent successfully (Plain Text fallback)!")
+                        return {"success": True, "response": response.json(), "fallback": True}
+                
+                # If still failing
+                logger.error(f"[ADAPTER] ❌ Failed to send message: {response.status_code}")
+                logger.error(f"[ADAPTER] ❌ Error response: {response.text}")
+                return {"success": False, "status": response.status_code, "error": response.text}
                     
             except Exception as e:
                 logger.error(f"[ADAPTER] ❌ Exception sending message: {e}", exc_info=True)
