@@ -47,17 +47,22 @@ class SystemLogger:
         try:
             data = {
                 "trace_id": trace_id,
-                "component": component,
-                "event_type": event_type,
-                "status": status,
-                "details": details or {},
-                "user_id": str(user_id) if user_id else None,
-                "created_at": datetime.now().isoformat()
+                "type": event_type, # v3 uses 'type'
+                "data": details or {}, # v3 uses 'data'
+                # "component": component, # v3 schema might not have component col, put in data?
+                # "user_id": str(user_id) if user_id else None, # v3 schema might not have user_id col?
+                "timestamp": datetime.now().isoformat()
             }
             
+            # If we want to keep component and user_id, we should add them to data or update schema
+            if component:
+                data["data"]["component"] = component
+            if user_id:
+                data["data"]["user_id"] = str(user_id)
+
             # Fire and forget - don't block main execution
             # In a high-scale system, this would go to a queue
-            DB.supabase.table("system_events").insert(data).execute()
+            DB.supabase.table("system_events_v3").insert(data).execute()
             
             # Also log to standard python logger
             log_msg = f"[{component.upper()}] {event_type}: {status}"

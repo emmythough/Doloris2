@@ -1,0 +1,1255 @@
+what do you think about this,
+# Doloris 3.0: Complete Architecture Document
+## Your Affordable Personal Jarvis
+
+**Version:** 3.0  
+**Last Updated:** November 2025  
+**Monthly Cost:** ~$26-31 for 30,000 messages  
+**Design Philosophy:** Cost-First, Stability-First, Safety-First
+
+---
+
+## Table of Contents
+
+1. [Executive Summary](#executive-summary)
+2. [Cost Model & Economics](#cost-model--economics)
+3. [System Architecture](#system-architecture)
+4. [Message Processing Flow](#message-processing-flow)
+5. [Component Details](#component-details)
+6. [Memory Strategy](#memory-strategy)
+7. [Dev Brain (R.D 3.0)](#dev-brain-rd-30)
+8. [Implementation Guide](#implementation-guide)
+9. [Observability & Debugging](#observability--debugging)
+10. [Scaling & Optimization](#scaling--optimization)
+
+---
+
+## Executive Summary
+
+Doloris 3.0 is a production-ready personal AI assistant (like Jarvis from Iron Man) that you can actually afford to run. By combining **Nico's cost-aware tiered intelligence** with **Robert's stability and safety patterns**, we've created a system that:
+
+- **Costs ~$30/month** for 30k messages (1k/day)
+- **Never times out** (FastAPI + Redis queue)
+- **Self-heals** (auto-creates PRs for bugs)
+- **Fully traceable** (every message has a trace_id)
+- **Production-safe** (Dev Brain never touches live code)
+
+### Core Design Principles
+
+1. **Tiered Intelligence**: Use cheap models for routing, expensive ones only when needed
+2. **Decouple Everything**: Webhooks → Queue → Workers prevents timeouts
+3. **Memory is Hybrid**: DB + Vector Store + Rolling Summaries keeps prompts small
+4. **Dev Brain is Read-Only**: All fixes go through GitHub PRs with human approval
+5. **Trace Everything**: Full observability with trace_id on every operation
+
+---
+
+## Cost Model & Economics
+
+### Model Pricing (Standard Tier)
+
+**All prices are "blended" assuming 50% input, 50% output tokens.**
+
+| Model | Input | Output | Blended | Use Case |
+|-------|-------|--------|---------|----------|
+| **gpt-5-nano** | $0.05/1M | $0.40/1M | **$0.225/1M** | Router & simple classifications |
+| **gpt-5-mini** | $0.25/1M | $2.00/1M | **$1.125/1M** | Main brain (chat, tasks, notes) |
+| **o3-mini** | $1.10/1M | $4.40/1M | **$2.75/1M** | Dev Brain (code reasoning, repairs) |
+| **gpt-5.1** | — | — | **$5.625/1M** | Optional, <1% of calls for ultra-hard tasks |
+
+### Monthly Cost Calculation
+
+**Assumptions:**
+- 1,000 messages/day = **30,000 messages/month**
+- Router uses **100 tokens/message** (nano)
+- Main brain uses **600 tokens/message** (mini, average of 300 in + 300 out)
+
+**Calculations:**
+
+1. **Router (gpt-5-nano)**
+   - Tokens: 30,000 × 100 = 3,000,000 = 3M
+   - Cost: 3M × $0.225/1M = **$0.68**
+
+2. **Main Brain (gpt-5-mini)**
+   - Tokens: 30,000 × 600 = 18,000,000 = 18M
+   - Cost: 18M × $1.125/1M = **$20.25**
+
+3. **Dev Brain (o3-mini)** - occasional use
+   - ~10 repairs/month × 5,000 tokens = 50,000 tokens
+   - Cost: 0.05M × $2.75/1M = **$0.14**
+
+4. **Batch Jobs** (summaries, compression)
+   - ~2M tokens/month @ Batch pricing (50% off)
+   - Cost: 2M × ($1.125 × 0.5)/1M = **$1.13**
+
+**Total Monthly Cost: $22.20**
+
+Add buffer for variable usage: **~$26-31/month**
+
+### Cost Control Strategies
+
+- **Strict token limits**: Max 2048 tokens per agent call
+- **Max tool calls**: 3 per conversation turn
+- **Prompt caching**: Static system prompts are cached by API (90% savings on input)
+- **Rolling summaries**: Old conversations compressed, not sent every time
+- **Batch processing**: Non-urgent work uses cheaper Batch/Flex tier
+- **Smart context loading**: Only fetch relevant DB rows + top 3-5 vector results
+
+---
+
+## System Architecture
+
+### High-Level Overview
+
+```
+┌─────────────┐
+│   Telegram  │
+│     User    │
+└──────┬──────┘
+       │ 1. Send message
+       ▼
+┌─────────────────────────────────────┐
+│   FastAPI Gateway                   │
+│   - Generate trace_id               │
+│   - Enqueue job to Redis            │
+│   - Return 200 OK in <100ms         │
+└──────┬──────────────────────────────┘
+       │ 2. Job queued
+       ▼
+┌─────────────────────────────────────┐
+│   Redis Job Queue                   │
+│   {trace_id, user_id, text, ...}    │
+└──────┬──────────────────────────────┘
+       │ 3. Worker pulls job
+       ▼
+┌─────────────────────────────────────┐
+│   Conversation Worker                │
+│   ┌───────────────────────────┐    │
+│   │ Intent Router (nano)      │    │
+│   │ → Classify intent         │    │
+│   └───────┬───────────────────┘    │
+│           │ 4. Route to agent       │
+│   ┌───────▼───────────────────┐    │
+│   │ Domain Agent (mini)       │    │
+│   │ - Load context            │    │
+│   │ - Call tools              │    │
+│   │ - Generate response       │    │
+│   └───────┬───────────────────┘    │
+└───────────┼────────────────────────┘
+            │ 5. Final response
+            ▼
+    ┌───────────────┐
+    │ Telegram API  │
+    │ Send message  │
+    └───────┬───────┘
+            │ 6. Delivered
+            ▼
+    ┌───────────────┐
+    │     User      │
+    └───────────────┘
+```
+
+### Architecture Layers
+
+1. **Ingestion Layer**: FastAPI Gateway
+2. **Stability Layer**: Redis Job Queue
+3. **Intelligence Layer**: Conversation Worker + Agents
+4. **Memory Layer**: Supabase + Vector Store
+5. **Tools Layer**: MCP Servers (Database, GitHub, etc.)
+6. **Self-Healing Layer**: Dev Brain Worker
+
+---
+
+## Message Processing Flow
+
+### Step-by-Step Timeline
+
+| Step | Service | Action | Time | Cost |
+|------|---------|--------|------|------|
+| 1 | Telegram | User sends "remind me to call mum tomorrow at 6pm" | 0ms | - |
+| 2 | FastAPI Gateway | Generate trace_id: `tr_a1b2c3d4` | 20ms | - |
+| 3 | FastAPI Gateway | Enqueue job to Redis | 50ms | - |
+| 4 | FastAPI Gateway | Return `200 OK` to Telegram | 80ms | - |
+| 5 | Conversation Worker | Pull job from Redis | 100ms | - |
+| 6 | Intent Router | Call gpt-5-nano: classify intent | 300ms | ~$0.00002 |
+| 7 | Router Result | `{intent: "create_task", confidence: 0.94}` | 320ms | - |
+| 8 | Tasks Agent | Load context: user profile + recent tasks | 350ms | - |
+| 9 | Tasks Agent | Call gpt-5-mini with tools | 1100ms | ~$0.00068 |
+| 10 | Tool Execution | Execute `add_task(title="call mum", due="2025-11-27 18:00")` | 1200ms | - |
+| 11 | Tasks Agent | Generate final response | 1300ms | - |
+| 12 | Telegram API | Send "✓ Added task: Call mum, tomorrow 6:00 PM" | 1400ms | - |
+
+**Total time: ~1.4 seconds**  
+**Total cost: ~$0.0007 (0.07 cents)**
+
+### Why This Doesn't Timeout
+
+**Problem (before):**  
+Telegram expects response within 30 seconds. Complex processing takes longer → timeout → user sees error.
+
+**Solution (Doloris 3.0):**
+1. FastAPI returns `200 OK` in 80ms (well within limit)
+2. Worker processes asynchronously (can take 5 seconds, 10 seconds, doesn't matter)
+3. Worker sends response via **Telegram API** (not webhook response)
+4. User receives answer when ready, no timeout possible
+
+---
+
+## Component Details
+
+### 1. FastAPI Gateway
+
+**Responsibilities:**
+- Receive webhooks from Telegram
+- Validate request (check signature, parse JSON)
+- Generate unique `trace_id` for every message
+- Normalize into internal event format
+- Log to `system_events` table
+- Enqueue job to Redis
+- Return `200 OK` immediately
+
+**Code structure:**
+```
+app/
+├── api/
+│   ├── telegram.py       # POST /telegram/webhook
+│   ├── web.py           # Future: POST /web/chat
+│   └── validation.py    # Request validation
+```
+
+**Key implementation details:**
+- Uses `asyncio` for non-blocking Redis enqueue
+- Logs structured events: `{type: "telegram_in", trace_id, user_id, timestamp}`
+- Returns in <100ms guaranteed
+
+---
+
+### 2. Redis Job Queue
+
+**Job format:**
+```json
+{
+  "type": "conversation_job",
+  "trace_id": "tr_a1b2c3d4",
+  "channel": "telegram",
+  "user_id": "123456789",
+  "payload": {
+    "message_text": "remind me to call mum tomorrow at 6pm",
+    "chat_id": "123456789",
+    "message_id": 42,
+    "raw": {...}
+  },
+  "enqueued_at": "2025-11-26T14:30:00Z"
+}
+```
+
+**Worker pattern:**
+```python
+while True:
+    job = redis.blpop("doloris:jobs:conversation", timeout=5)
+    if job:
+        process_conversation_job(job)
+```
+
+**Why Redis?**
+- Simple, fast, reliable
+- Built-in blocking pop (`BLPOP`)
+- Horizontal scaling: run multiple workers
+- Can add priority queues later
+
+---
+
+### 3. Intent Router (gpt-5-nano)
+
+**Purpose:**  
+Classify user intent cheaply before calling expensive models.
+
+**System prompt (compact):**
+```
+You are an intent classifier. Return ONLY JSON.
+
+Intents:
+- chat: casual conversation
+- create_task: add todo/reminder
+- list_tasks: show tasks
+- complete_task: mark done
+- log_entry: journal/note
+- trace_query: system debugging
+- dev_command: /repair, /stats
+
+Return: {"intent": "...", "confidence": 0.0-1.0, "entities": {...}}
+```
+
+**Input:**
+```
+User: "remind me to call mum tomorrow at 6pm"
+```
+
+**Output:**
+```json
+{
+  "intent": "create_task",
+  "confidence": 0.94,
+  "entities": {
+    "title": "call mum",
+    "time": "tomorrow 18:00"
+  }
+}
+```
+
+**Cost per classification:**  
+~100 tokens @ $0.225/1M = **$0.0000225** (0.002 cents)
+
+**Why nano?**
+- 10x cheaper than mini
+- Classification is simple, doesn't need reasoning
+- Fast (<200ms typical)
+
+---
+
+### 4. Domain Agents (gpt-5-mini)
+
+Each agent is a specialized LLM call with:
+- Custom system prompt
+- Specific tools it can call
+- Context policy (what to load from DB)
+
+#### Agent Types
+
+**A. General Assistant Agent**
+
+- **Handles:** `intent: "chat"`
+- **Tools:** None (or optional: web_search, calculator)
+- **Context:** User profile, recent conversation summary
+- **Prompt:** "You are Doloris, a helpful personal assistant. Be concise and friendly."
+
+**B. Tasks & Life Agent**
+
+- **Handles:** `intent: "create_task" | "list_tasks" | "complete_task"`
+- **Tools:**
+  - `add_task(title, due_date, priority, notes)`
+  - `list_tasks(filter, limit)`
+  - `complete_task(task_id)`
+  - `update_task(task_id, changes)`
+- **Context:** User timezone, next 10 upcoming tasks, overdue tasks
+- **Prompt:** "You manage the user's tasks and reminders. Always confirm what you did clearly."
+
+**C. Notes & Knowledge Agent**
+
+- **Handles:** `intent: "log_entry"`
+- **Tools:**
+  - `create_log_entry(content, tags)`
+  - `semantic_search(query, limit=5)`
+- **Context:** Recent log entries, user's journaling preferences
+- **Prompt:** "You help the user journal and organize knowledge. Use semantic search for related entries."
+
+**D. System/Trace Agent**
+
+- **Handles:** `intent: "trace_query"`
+- **Tools:**
+  - `get_trace(trace_id)`
+  - `list_errors(last_n_hours)`
+  - `get_stats(metric)`
+- **Context:** None (reads directly from system tables)
+- **Prompt:** "You help debug system issues. Show technical details clearly."
+
+**E. Dev Brain Coordinator**
+
+- **Handles:** `intent: "dev_command"`
+- **Tools:**
+  - `create_repair_ticket(description, error_ids)`
+  - `list_repair_tickets(status)`
+- **Context:** Recent errors from `errors` table
+- **Prompt:** "You coordinate code repairs. Create tickets for the Dev Brain to fix."
+
+#### Agent Execution Pattern
+
+```python
+def execute_agent(agent_type, user_message, context):
+    # 1. Load context
+    if agent_type == "tasks":
+        context = load_tasks_context(user_id)
+    
+    # 2. Build prompt
+    system_prompt = get_agent_prompt(agent_type)
+    tools = get_agent_tools(agent_type)
+    
+    # 3. Call LLM with tools
+    response = openai.chat.completions.create(
+        model="gpt-5-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ],
+        tools=tools,
+        max_tokens=2048,
+        temperature=0.7
+    )
+    
+    # 4. Handle tool calls
+    while response.choices[0].finish_reason == "tool_calls":
+        tool_results = execute_tools(response.choices[0].message.tool_calls)
+        response = continue_with_tool_results(response, tool_results)
+    
+    # 5. Return final text
+    return response.choices[0].message.content
+```
+
+**Cost per agent call:**  
+~600 tokens @ $1.125/1M = **$0.000675** (0.07 cents)
+
+---
+
+## Memory Strategy
+
+### The Problem
+
+If we send full conversation history + all tasks + all logs every time:
+- Prompts become huge (10k+ tokens)
+- Costs explode ($0.01+ per message)
+- Models get confused with too much context
+
+### The Solution: Hybrid Memory
+
+**1. Relational Memory (Supabase)**
+
+Structured data, queried precisely:
+
+```sql
+-- Tables
+users (id, name, timezone, preferences)
+tasks (id, user_id, title, due_date, status, priority)
+logs (id, user_id, content, tags, created_at)
+instructions (id, user_id, rule, active)
+system_events (id, trace_id, type, data, timestamp)
+errors (id, trace_id, error_type, stack, context)
+repair_tickets (id, error_ids, status, pr_url)
+```
+
+**When to query:**
+- Tasks Agent: `SELECT * FROM tasks WHERE user_id=? AND status='pending' ORDER BY due_date LIMIT 10`
+- Notes Agent: `SELECT * FROM logs WHERE user_id=? ORDER BY created_at DESC LIMIT 5`
+- Instructions: `SELECT * FROM instructions WHERE user_id=? AND active=true`
+
+**2. Semantic Memory (Vector Store)**
+
+Unstructured data, retrieved by similarity:
+
+**What goes here:**
+- Long journal entries (>500 words)
+- Uploaded documents (PDFs, notes)
+- System design docs
+- Compressed conversation summaries
+
+**When to query:**
+- User asks: "what did I write about my trip to Paris?"
+- Agent calls: `semantic_search("Paris trip", limit=5)`
+- Returns: Top 5 most relevant chunks (each ~200 words)
+
+**3. Conversation Memory (Rolling Summaries)**
+
+**Pattern:**
+- Keep last **10 conversation turns** in full
+- Keep a **rolling summary** of older history
+- When history > 10 turns:
+  - Background job compresses turns 1-5 into a summary
+  - Stores summary, deletes old turns
+
+**Example:**
+
+Turn 1-10 (recent):
+```
+User: remind me to call mum
+Doloris: Added task: Call mum
+User: what's the weather today?
+Doloris: It's 22°C and sunny in Kampala
+...
+```
+
+Turn 11+ (compressed):
+```
+Summary: User discussed weekend plans, asked for restaurant recommendations
+in Kampala, set 3 reminders about work meetings. User prefers concise responses.
+```
+
+**Storage:**
+```json
+{
+  "user_id": "123",
+  "recent_turns": [...10 most recent...],
+  "summary": "...",
+  "summary_updated_at": "2025-11-26T12:00:00Z"
+}
+```
+
+### Context Loading Policy (by Agent)
+
+| Agent | Relational | Vector | Conversation | Total Tokens |
+|-------|-----------|--------|--------------|--------------|
+| Chat | User profile | - | Recent 5 + summary | ~300 |
+| Tasks | User + 10 tasks | - | Recent 3 + summary | ~400 |
+| Notes | User + 5 logs | Top 3 similar | Recent 3 + summary | ~600 |
+| System | - | - | Recent 1 | ~100 |
+
+**This keeps prompts small (300-600 tokens context) instead of massive (5k+ tokens).**
+
+---
+
+## Dev Brain (R.D 3.0)
+
+### Purpose
+
+Automatically fix bugs by creating GitHub PRs, never touching production code.
+
+### Trigger Conditions
+
+**A. Manual trigger:**
+```
+User: /repair the crash when adding a task without a title
+```
+
+**B. Automatic trigger:**
+- Same error signature appears 3+ times in 1 hour
+- System creates repair ticket automatically
+- Notifies user: "I detected a recurring crash. Should I investigate?"
+
+### Dev Brain Workflow
+
+**Step 1: Ticket Creation**
+
+```python
+# User types: /repair crash when adding task
+
+# Coordinator Agent (gpt-5-mini) parses command
+ticket = {
+    "id": "rpr_001",
+    "description": "crash when adding task",
+    "error_ids": [123, 124, 125],  # related error_ids
+    "trace_ids": ["tr_abc", "tr_def"],
+    "status": "pending",
+    "created_at": "2025-11-26T14:30:00Z"
+}
+
+# Store in Supabase
+supabase.table("repair_tickets").insert(ticket)
+
+# Enqueue Dev Brain job
+redis.rpush("doloris:jobs:dev_brain", json.dumps({
+    "type": "repair_job",
+    "ticket_id": "rpr_001"
+}))
+
+# Respond to user
+return "Got it! I've opened repair ticket #001. R.D will investigate."
+```
+
+**Step 2: Dev Brain Analysis (o3-mini)**
+
+```python
+# dev_brain_worker.py
+
+def process_repair_job(ticket_id):
+    # 1. Load ticket + errors
+    ticket = get_ticket(ticket_id)
+    errors = get_errors(ticket["error_ids"])
+    traces = get_traces(ticket["trace_ids"])
+    
+    # 2. Call o3-mini with specialized prompt
+    context = {
+        "description": ticket["description"],
+        "error_samples": errors[:3],  # Top 3 examples
+        "stack_traces": [e["stack"] for e in errors],
+        "relevant_traces": traces
+    }
+    
+    # 3. o3-mini reasons about the bug
+    analysis = call_o3_mini_with_tools(
+        system_prompt=DEV_BRAIN_PROMPT,
+        context=context,
+        tools=[
+            "github_get_file",      # Read code from repo
+            "github_search_code",   # Find related files
+            "generate_test",        # Create failing test
+            "generate_patch"        # Create fix
+        ]
+    )
+    
+    return analysis
+```
+
+**Step 3: Generate Fix**
+
+```python
+# o3-mini's reasoning (internal):
+# 1. Error: "NoneType has no attribute 'strip'" in add_task()
+# 2. Root cause: no validation for None title
+# 3. Fix: add validation before processing
+
+# Tool calls made by o3-mini:
+
+# Call 1: Read current code
+github_get_file("app/agents/tasks.py")
+
+# Call 2: Generate failing test
+test_code = """
+def test_add_task_without_title():
+    # This should raise ValidationError, not crash
+    with pytest.raises(ValidationError):
+        add_task(title=None, due_date="2025-11-27")
+"""
+
+# Call 3: Generate fix
+patch = """
+def add_task(title, due_date, priority="medium"):
+    if not title or not title.strip():
+        raise ValidationError("Task title cannot be empty")
+    
+    # ... rest of function
+"""
+
+return {
+    "test_file": "tests/test_tasks.py",
+    "test_code": test_code,
+    "patch_file": "app/agents/tasks.py",
+    "patch_code": patch,
+    "explanation": "Added validation for empty/None titles"
+}
+```
+
+**Step 4: Create PR**
+
+```python
+def create_repair_pr(ticket_id, analysis):
+    # 1. Create branch
+    branch_name = f"fix/repair-{ticket_id}"
+    github_create_branch(branch_name)
+    
+    # 2. Commit test
+    github_commit_file(
+        branch=branch_name,
+        path=analysis["test_file"],
+        content=analysis["test_code"],
+        message=f"test: add failing test for ticket #{ticket_id}"
+    )
+    
+    # 3. Commit fix
+    github_commit_file(
+        branch=branch_name,
+        path=analysis["patch_file"],
+        content=analysis["patch_code"],
+        message=f"fix: {analysis['explanation']}"
+    )
+    
+    # 4. Open PR
+    pr = github_create_pr(
+        title=f"Fix: {ticket['description']}",
+        body=f"""
+        ## Repair Ticket #{ticket_id}
+        
+        **Error:** {ticket['description']}
+        **Trace IDs:** {', '.join(ticket['trace_ids'])}
+        
+        ## Changes
+        {analysis['explanation']}
+        
+        ## Testing
+        - Added failing test: {analysis['test_file']}
+        - Test now passes with fix applied
+        
+        **Auto-generated by R.D 3.0**
+        """,
+        base="main",
+        head=branch_name
+    )
+    
+    # 5. Update ticket
+    supabase.table("repair_tickets").update({
+        "status": "pr_created",
+        "pr_url": pr["url"],
+        "pr_number": pr["number"]
+    }).eq("id", ticket_id).execute()
+    
+    # 6. Notify user
+    send_telegram_message(
+        f"✓ R.D has created PR #{pr['number']} to fix: {ticket['description']}\n"
+        f"Review at: {pr['url']}"
+    )
+```
+
+**Step 5: Human Review & Merge**
+
+- Developer reviews PR on GitHub
+- Checks test actually fails before fix
+- Checks test passes after fix
+- Reviews code for correctness
+- Merges PR when satisfied
+- GitHub Actions redeploys to Render
+
+**Step 6: Ticket Closure**
+
+```python
+# Background job monitors PR status
+def check_pr_status():
+    open_tickets = supabase.table("repair_tickets").select("*").eq("status", "pr_created").execute()
+    
+    for ticket in open_tickets:
+        pr_status = github_get_pr_status(ticket["pr_number"])
+        
+        if pr_status == "merged":
+            supabase.table("repair_tickets").update({
+                "status": "resolved",
+                "resolved_at": datetime.now()
+            }).eq("id", ticket["id"]).execute()
+            
+            send_telegram_message(
+                f"✓ Fixed! PR #{ticket['pr_number']} merged. "
+                f"The '{ticket['description']}' issue is resolved."
+            )
+```
+
+### Dev Brain Cost Analysis
+
+**Typical repair:**
+- Load 3 error samples: ~500 tokens
+- Read 2 code files: ~1,000 tokens
+- o3-mini reasoning: ~3,000 tokens (input + output)
+- **Total: ~4,500 tokens @ $2.75/1M = $0.012** (1.2 cents)
+
+**Monthly estimate:**
+- ~10 repairs/month × $0.012 = **$0.12/month**
+
+**Using Batch tier (50% off):**
+- 10 repairs × $0.006 = **$0.06/month**
+
+### Safety Guarantees
+
+**Critical rules:**
+1. Dev Brain can ONLY interact with GitHub API (never local filesystem)
+2. All changes go through Git (branch → commit → PR)
+3. No direct database writes (only reads via MCP)
+4. Human approval required before merge (PR review)
+5. Every repair is auditable (ticket + trace_id + PR link)
+
+**What Dev Brain CANNOT do:**
+- ❌ Modify production code directly
+- ❌ Run `git push` to main branch
+- ❌ Execute system commands
+- ❌ Delete data from database
+- ❌ Disable safety checks
+
+**What Dev Brain CAN do:**
+- ✅ Read code from GitHub
+- ✅ Create branches
+- ✅ Write test files
+- ✅ Write code patches
+- ✅ Open PRs for review
+
+---
+
+## Implementation Guide
+
+### Tech Stack
+
+- **Language:** Python 3.11+
+- **API Framework:** FastAPI
+- **Queue:** Redis
+- **Database:** Supabase (PostgreSQL)
+- **Vector Store:** Supabase pgvector or Pinecone
+- **LLM API:** OpenAI (gpt-5-nano, gpt-5-mini, o3-mini)
+- **Deployment:** Render or Railway
+- **VCS:** GitHub
+- **Bot Platform:** Telegram Bot API
+
+### File Structure
+
+```
+doloris/
+├── app/
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── telegram.py          # POST /telegram/webhook
+│   │   └── validation.py        # Request validation
+│   │
+│   ├── brain/
+│   │   ├── __init__.py
+│   │   ├── router.py            # Intent Router (nano)
+│   │   └── context.py           # Context loading logic
+│   │
+│   ├── agents/
+│   │   ├── __init__.py
+│   │   ├── base.py              # Base agent class
+│   │   ├── chat.py              # General Assistant
+│   │   ├── tasks.py             # Tasks & Life Agent
+│   │   ├── notes.py             # Notes & Knowledge Agent
+│   │   ├── system.py            # System/Trace Agent
+│   │   └── dev_coordinator.py  # Dev Brain Coordinator
+│   │
+│   ├── tools/
+│   │   ├── __init__.py
+│   │   ├── database.py          # Supabase operations
+│   │   ├── github.py            # GitHub MCP client
+│   │   ├── vector.py            # Vector search
+│   │   └── schemas.py           # Pydantic tool schemas
+│   │
+│   ├── dev_brain/
+│   │   ├── __init__.py
+│   │   ├── worker.py            # Dev Brain worker
+│   │   ├── analyzer.py          # Error analysis (o3-mini)
+│   │   └── github_ops.py        # PR creation logic
+│   │
+│   ├── workers/
+│   │   ├── __init__.py
+│   │   ├── conversation.py      # Main conversation worker
+│   │   ├── dev_brain.py         # Dev Brain worker
+│   │   └── background.py        # Batch jobs (summaries)
+│   │
+│   ├── memory/
+│   │   ├── __init__.py
+│   │   ├── summarizer.py        # Rolling summaries
+│   │   └── retrieval.py         # Context retrieval
+│   │
+│   └── utils/
+│       ├── __init__.py
+│       ├── tracing.py           # trace_id generation
+│       ├── logging.py           # Structured logging
+│       └── config.py            # Environment config
+│
+├── tests/
+│   ├── test_agents.py
+│   ├── test_tools.py
+│   └── test_dev_brain.py
+│
+├── scripts/
+│   ├── setup_db.py              # Create Supabase tables
+│   └── run_workers.py           # Start all workers
+│
+├── .env.example
+├── requirements.txt
+├── README.md
+└── main.py                      # FastAPI app entry point
+```
+
+### Environment Variables
+
+```bash
+# .env
+OPENAI_API_KEY=sk-...
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+TELEGRAM_WEBHOOK_SECRET=your_webhook_secret
+
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_KEY=eyJ...
+
+REDIS_URL=redis://localhost:6379
+
+GITHUB_TOKEN=ghp_...
+GITHUB_REPO=username/doloris
+
+ENVIRONMENT=production  # or development
+LOG_LEVEL=INFO
+```
+
+### Deployment Steps
+
+1. **Create Supabase project**
+   ```bash
+   python scripts/setup_db.py
+   ```
+
+2. **Start Redis**
+   ```bash
+   docker run -d -p 6379:6379 redis:alpine
+   ```
+
+3. **Start FastAPI**
+   ```bash
+   uvicorn main:app --host 0.0.0.0 --port 8000
+   ```
+
+4. **Start Workers**
+   ```bash
+   python scripts/run_workers.py
+   ```
+
+5. **Set Telegram Webhook**
+   curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+     -d "url=https://your-domain.com/telegram/webhook&secret_token=$TELEGRAM_WEBHOOK_SECRET"
+Configure on Render/Railway
+
+Create a new Web Service for FastAPI:
+
+Start command: uvicorn main:app --host 0.0.0.0 --port 8000
+
+Set environment variables from .env (but never commit .env to git).
+
+Create a Background Worker service for:
+
+python scripts/run_workers.py
+
+Add a Redis add-on or separate Redis service.
+
+Ensure:
+
+Health check: GET /health endpoint in FastAPI.
+
+Auto-redeploy on new commits to main.
+
+Local Development
+
+Run everything locally with Docker Compose:
+
+yaml
+Copy code
+# docker-compose.yml (minimal sketch)
+version: "3.9"
+services:
+  api:
+    build: .
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+
+  worker:
+    build: .
+    command: python scripts/run_workers.py
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+Then:
+
+bash
+Copy code
+docker compose up --build
+Observability & Debugging
+Doloris 3.0 is designed to be fully traceable. Every message gets a trace_id and every significant action is logged against it.
+
+1. Trace IDs
+Generated at the FastAPI Gateway for every incoming message.
+
+Propagate through:
+
+Job payload in Redis
+
+Worker logs
+
+DB writes (system_events, errors, repair_tickets)
+
+Example format:
+
+python
+Copy code
+import uuid
+
+def generate_trace_id() -> str:
+    return f"tr_{uuid.uuid4().hex[:16]}"
+2. System Events
+Table: system_events
+
+sql
+Copy code
+CREATE TABLE system_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  trace_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+Examples:
+
+telegram_in
+
+conversation_enqueued
+
+conversation_started
+
+intent_classified
+
+agent_called
+
+tool_called
+
+tool_failed
+
+response_sent
+
+dev_ticket_created
+
+dev_pr_created
+
+Insert pattern:
+
+python
+Copy code
+def log_event(trace_id: str, event_type: str, payload: dict):
+    supabase.table("system_events").insert({
+        "trace_id": trace_id,
+        "event_type": event_type,
+        "payload": payload
+    }).execute()
+3. Error Tracking
+Table: errors
+
+sql
+Copy code
+CREATE TABLE errors (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  trace_id TEXT NOT NULL,
+  error_type TEXT NOT NULL,
+  message TEXT NOT NULL,
+  stack_trace TEXT,
+  context JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+Use cases:
+
+LLM call fails (API error, timeout)
+
+Tool execution fails (DB down, GitHub error)
+
+Internal exceptions in workers
+
+Pattern:
+
+python
+Copy code
+import traceback
+
+def log_error(trace_id: str, exc: Exception, context: dict | None = None):
+    supabase.table("errors").insert({
+        "trace_id": trace_id,
+        "error_type": type(exc).__name__,
+        "message": str(exc),
+        "stack_trace": traceback.format_exc(),
+        "context": context or {}
+    }).execute()
+4. /trace Command (User-Facing Debugging)
+Telegram command:
+
+text
+Copy code
+/trace tr_a1b2c3d4
+Behavior:
+
+System/Trace Agent looks up:
+
+system_events for that trace_id
+
+errors for that trace_id
+
+Summarizes:
+
+When it started
+
+Which agent ran
+
+Which tools were used
+
+Whether any error occurred
+
+User output example:
+
+Trace tr_a1b2c3d4
+
+Started: 2025-11-26 14:30:01
+
+Intent: create_task (0.94 confidence)
+
+Agent: Tasks & Life
+
+Tools: add_task (success)
+
+Status: ✅ Completed, no internal errors
+
+If an error occurred, show:
+
+Status: ⚠️ Error
+
+Error: SupabaseTimeoutError at tools/database.py:42
+
+5. Metrics & Dashboards
+You can plug logs into:
+
+Grafana / Prometheus
+
+Or simply:
+
+Create Supabase views for:
+
+Errors per hour
+
+Average response time per agent
+
+Tool failure rate
+
+Example quick query:
+
+sql
+Copy code
+SELECT
+  date_trunc('hour', created_at) AS hour,
+  count(*) AS error_count
+FROM errors
+GROUP BY hour
+ORDER BY hour DESC
+LIMIT 24;
+Use these to spot:
+
+Spikes in errors (DB down, bad deploy)
+
+Slow agents (too much context, too many tools)
+
+Misbehaving tools (frequent failures)
+
+Scaling & Optimization
+Doloris 3.0 is designed to scale gradually: from “one small server” to “many workers” without rewriting the core.
+
+1. Horizontal Scaling
+API Gateway
+
+Stateless → scale by adding more instances behind a load balancer.
+
+All it does is:
+
+Validate request
+
+Enqueue into Redis
+
+Return 200 OK
+
+Workers
+
+You can run N conversation workers, M Dev Brain workers, K background workers.
+
+Scaling strategy:
+
+If queue length stays high → add more workers.
+
+If CPU bound → increase worker count or instance size.
+
+2. Rate Limits & Backpressure
+Implement max jobs in queue:
+
+If Redis queue length > threshold (e.g. 10k):
+
+Start returning a friendly “I’m overloaded” message.
+
+Or cut off new jobs temporarily.
+
+Add per-user rate limit:
+
+Simple DB/Redis counter: max X messages/minute per user.
+
+3. Cost Optimization Techniques
+Already baked into Doloris 3.0:
+
+Tiered models
+
+Router → gpt-5-nano
+
+Agents → gpt-5-mini
+
+Dev Brain → o3-mini (only when needed)
+
+Optional gpt-5.1 for extreme cases only
+
+Token controls
+
+max_tokens per call (e.g., 2048)
+
+Strict context size limits (400–800 tokens typical)
+
+Rolling summaries instead of raw history
+
+Prompt caching
+
+Use OpenAI prompt caching for:
+
+Static system prompts (shared across turns)
+
+Common agent preambles
+
+Batch / Flex tiers
+
+Run:
+
+Nightly summaries
+
+Bulk log labeling
+
+Evals
+using Batch or Flex to halve cost.
+
+Minimal tool responses
+
+Tools return only what’s needed, not entire rows/objects.
+
+Example: return top 5 tasks, not entire task history.
+
+4. Performance Tuning
+Slow responses usually caused by:
+
+Too many tokens (large context or outputs)
+
+Too many tool calls per turn
+
+To fix:
+
+Tighten context:
+
+Use fewer tasks/logs per query.
+
+Increase summarization frequency.
+
+Cap tool calls:
+
+After 3 tool calls, model must reply with “I’ll continue later” or ask you to refine request.
+
+Use faster tiers (Priority) only where latency is critical.
+
+5. Feature Flags & Safe Rollouts
+Before changing major behavior (new prompts, new models, new tools):
+
+Add feature flags:
+
+USE_NEW_TASK_AGENT_V2
+
+USE_O3_MINI_FOR_DEV_BRAIN
+
+Roll out gradually:
+
+10% of traffic → observe errors & metrics
+
+Then 50% → then 100%
+
+Always be able to flip back to last stable version.
+
+You now essentially have:
+
+A costed model plan
+
+A complete architecture
+
+Detailed flows
+
+A Dev Brain design that is powerful but safe
+
+Observability, debugging, and scaling strategies
+

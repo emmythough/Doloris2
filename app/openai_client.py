@@ -96,3 +96,6 @@ def get_completion(
     except Exception as e:
         logger.error(f"OpenAI API Error: {e}")
         raise e
+
+# Global instance
+openai_client = OpenAIClient()

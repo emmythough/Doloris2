@@ -1,29 +1,61 @@
-"""
-API Gateway - Main entry point for Doloris 2.0
+from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
+from app.core.queue import enqueue_job
+from app.core.system_logger import system_logger
+import uuid
+import logging
 
-Routes requests to appropriate endpoints.
-"""
+router = APIRouter()
+logger = logging.getLogger(__name__)
 
-from fastapi import FastAPI
-from app.api.endpoints import message, file, tools, diagnostic
-from app.telegram_webhook import router as telegram_router
-from app.heartbeat import router as heartbeat_router
+@router.post("/telegram/webhook")
+async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
+    """
+    Non-blocking webhook handler.
+    1. Generates trace_id
+    2. Enqueues job to Redis
+    3. Returns 200 OK immediately
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
 
-app = FastAPI(title="Doloris 2.0 API")
+    # Generate Trace ID
+    trace_id = f"tr_{uuid.uuid4().hex[:8]}"
+    
+    # Log Ingestion Event
+    system_logger.log_event(
+        trace_id=trace_id,
+        component="gateway",
+        event_type="telegram_in",
+        status="info",
+        details={"payload_size": len(str(payload))}
+    )
 
-# Include routers
-app.include_router(message.router, prefix="/api/v1", tags=["messages"])
-app.include_router(file.router, prefix="/api/v1", tags=["files"])
-app.include_router(tools.router, prefix="/api/v1/tools", tags=["tools"])
-app.include_router(diagnostic.router, prefix="/diagnostic", tags=["diagnostic"])
-app.include_router(telegram_router, prefix="/telegram", tags=["telegram"])
-app.include_router(heartbeat_router, prefix="/heartbeat", tags=["heartbeat"])
+    # Extract basic info for the queue payload
+    # We pass the full payload to the worker to handle parsing
+    job_payload = {
+        "raw_update": payload,
+        "source": "telegram"
+    }
 
-@app.get("/")
-async def root():
-    return {"status": "online", "version": "2.0", "system": "Doloris Core"}
+    # Enqueue Job (using BackgroundTasks to ensure we return 200 OK fast, 
+    # though Redis enqueue is fast enough to do synchronously usually)
+    # We'll do it synchronously here to ensure it's in Redis before we say OK.
+    try:
+        job_id = enqueue_job(
+            queue_name="conversation",
+            job_type="process_update",
+            payload=job_payload,
+            trace_id=trace_id
+        )
+        logger.info(f"Enqueued job {job_id} for trace {trace_id}")
+    except Exception as e:
+        logger.error(f"Failed to enqueue job: {e}")
+        # In a real prod system, we might want to fallback or return 500, 
+        # but for Telegram we should return 200 to stop retries if it's a permanent error.
+        # However, if Redis is down, we might want to retry. 
+        # For now, let's return 200 and log error.
+        return {"status": "error", "message": "Internal queue error"}
 
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
-
+    return {"status": "ok", "trace_id": trace_id}
