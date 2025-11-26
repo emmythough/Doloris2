@@ -32,6 +32,15 @@ class OpenAIClient:
                 if role == "system":
                     role = "developer"
                 
+                # Handle tool messages - CRITICAL: Must include tool_call_id
+                if role == "tool":
+                    inputs.append({
+                        "role": role, 
+                        "content": content,
+                        "tool_call_id": msg.get("tool_call_id")
+                    })
+                    continue
+                
                 # Handle structured content (files/images)
                 if isinstance(content, list):
                     inputs.append({"role": role, "content": content})
