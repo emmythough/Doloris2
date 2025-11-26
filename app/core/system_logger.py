@@ -62,7 +62,7 @@ class SystemLogger:
 
             # Fire and forget - don't block main execution
             # In a high-scale system, this would go to a queue
-            DB.supabase.table("system_events_v3").insert(data).execute()
+            DB.supabase.table("system_events").insert(data).execute()
             
             # Also log to standard python logger
             log_msg = f"[{component.upper()}] {event_type}: {status}"
