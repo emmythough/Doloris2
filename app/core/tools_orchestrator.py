@@ -133,7 +133,7 @@ class ToolsOrchestrator:
         """Create a log entry"""
         log = db.create_log(
             user_id=user_id,
-            log_type=args.get("type", "note"),
+            type=args.get("type", "note"),
             summary=args.get("summary")
         )
         return {"success": True, "log_id": log.id if log else None}
@@ -169,6 +169,6 @@ class ToolsOrchestrator:
             )
             results.append({
                 "tool_call_id": tool_id,
-                "result": result
+                "content": str(result)  # Convert to string and use 'content' key
             })
         return results
