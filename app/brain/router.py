@@ -35,13 +35,13 @@ Output Format:
     @staticmethod
     async def classify(text: str) -> Dict[str, Any]:
         try:
-            # Use the cheapest model available
+            # Use the cheapest model for fast classification
             response = await openai_client.chat_completion(
                 messages=[
                     {"role": "system", "content": IntentRouter.SYSTEM_PROMPT},
                     {"role": "user", "content": text}
                 ],
-                model="gpt-4o-mini", # Mapping 'nano' to 'gpt-4o-mini'
+                model="gpt-4o-mini",  # Cheapest OpenAI model for classification
                 # response_format={"type": "json_object"} # Not supported in wrapper yet, need to handle json parsing manually or update wrapper
             )
             

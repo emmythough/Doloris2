@@ -42,7 +42,7 @@ def enqueue_job(queue_name: str, job_type: str, payload: dict, trace_id: str):
         return job.id
     elif queue_name == "dev_brain":
         job = dev_brain_queue.enqueue(
-            "app.workers.dev_brain_worker.process_repair_job",
+            "app.dev_brain.worker.process_repair_job",  # Fixed: was app.workers.dev_brain_worker
             job_data,
             job_id=trace_id
         )

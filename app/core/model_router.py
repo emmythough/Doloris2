@@ -1,11 +1,11 @@
 """
 Model Router - Intelligent model selection for cost optimization
 
-Tier 0 (gpt-5-nano): Ultra-cheap - Short reactions, yes/no, thanks
-Tier 1 (gpt-5-mini): Balance - General conversation, simple tasks
-Tier 2 (gpt-5): Standard - Tool usage, memory writes, calendar, file analysis
-Tier 3 (gpt-5.1): Reasoning - Complex reasoning, planning
-Tier 4 (o1-mini/o3-pro): Deep - Explicit deep thinking or max intelligence
+Tier 0 (gpt-4o-mini): Ultra-cheap - Short reactions, yes/no, thanks
+Tier 1 (gpt-4o-mini): Balance - General conversation, simple tasks
+Tier 2 (gpt-4o): Standard - Tool usage, memory writes, calendar, file analysis
+Tier 3 (o1-mini): Reasoning - Complex reasoning, planning
+Tier 4 (o1-mini/o1-preview): Deep - Explicit deep thinking or max intelligence
 """
 
 import logging
@@ -15,12 +15,12 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 class ModelTier(Enum):
-    TIER_0 = "gpt-5-nano"       # Ultra-cheap
-    TIER_1 = "gpt-5-mini"       # Balance
-    TIER_2 = "gpt-5"            # Standard
-    TIER_3 = "gpt-5.1"          # Reasoning
+    TIER_0 = "gpt-4o-mini"      # Ultra-cheap (was gpt-5-nano)
+    TIER_1 = "gpt-4o-mini"      # Balance (was gpt-5-mini)
+    TIER_2 = "gpt-4o"           # Standard (was gpt-5)
+    TIER_3 = "o1-mini"          # Reasoning (was gpt-5.1)
     TIER_4_DEEP = "o1-mini"     # Deep
-    TIER_4_MAX = "o3-pro"       # Max Intelligence
+    TIER_4_MAX = "o1-preview"   # Max Intelligence (was o3-pro)
 
 class ModelRouter:
     """Decides which model to use based on message intent"""
@@ -57,7 +57,7 @@ class ModelRouter:
         
         # Tier 4: Explicit Deep/Max Request
         if any(k in text for k in ModelRouter.MAX_KEYWORDS):
-            logger.info("Max intelligence requested → Tier 4 (o3-pro)")
+            logger.info("Max intelligence requested → Tier 4 (o1-preview)")
             return ModelTier.TIER_4_MAX
             
         if any(k in text for k in ModelRouter.DEEP_KEYWORDS) or user_preference == "deep":
@@ -66,21 +66,21 @@ class ModelRouter:
             
         # Tier 3: Complex Reasoning
         if any(k in text for k in ModelRouter.REASONING_KEYWORDS):
-            logger.info("Reasoning needed → Tier 3 (gpt-5.1)")
+            logger.info("Reasoning needed → Tier 3 (o1-mini)")
             return ModelTier.TIER_3
             
         # Tier 2: Tools, Files, Long Context
         if has_tools or file_attached or len(context) > 2000:
-            logger.info("Tools/Files/Context → Tier 2 (gpt-5)")
+            logger.info("Tools/Files/Context → Tier 2 (gpt-4o)")
             return ModelTier.TIER_2
             
         # Tier 0: Short Acknowledgements
         if len(text) < 12 or text in ModelRouter.SHORT_ACKNOWLEDGEMENTS:
-            logger.info("Short acknowledgement → Tier 0 (gpt-5-nano)")
+            logger.info("Short acknowledgement → Tier 0 (gpt-4o-mini)")
             return ModelTier.TIER_0
             
         # Tier 1: Default (General Conversation)
-        logger.info("General conversation → Tier 1 (gpt-5-mini)")
+        logger.info("General conversation → Tier 1 (gpt-4o-mini)")
         return ModelTier.TIER_1
     
     @staticmethod
