@@ -86,17 +86,36 @@ class SystemLogger:
     def get_recent_traces(self, limit: int = 10, user_id: str = None) -> List[Dict]:
         """Get most recent unique traces"""
         try:
-            query = DB.supabase.table("system_events")\
-                .select("trace_id, created_at, event_type, status")\
-                .eq("event_type", "webhook_received")\
-                .order("created_at", desc=True)\
-                .limit(limit)
-                
             if user_id:
-                query = query.eq("user_id", user_id)
+                # Find recent events for this user to identify trace_ids
+                # We don't filter by event_type because 'webhook_received' doesn't have user_id yet
+                response = DB.supabase.table("system_events")\
+                    .select("trace_id, created_at")\
+                    .eq("user_id", user_id)\
+                    .order("created_at", desc=True)\
+                    .limit(limit * 10)\
+                    .execute()
                 
-            response = query.execute()
-            return response.data
+                # Deduplicate trace_ids while preserving order (most recent first)
+                trace_ids = []
+                seen = set()
+                for item in response.data:
+                    tid = item['trace_id']
+                    if tid not in seen:
+                        trace_ids.append({"trace_id": tid, "created_at": item["created_at"]})
+                        seen.add(tid)
+                        if len(trace_ids) >= limit:
+                            break
+                return trace_ids
+            else:
+                # Global view (fallback)
+                query = DB.supabase.table("system_events")\
+                    .select("trace_id, created_at, event_type, status")\
+                    .eq("event_type", "webhook_received")\
+                    .order("created_at", desc=True)\
+                    .limit(limit)
+                response = query.execute()
+                return response.data
         except Exception as e:
             logger.error(f"Error fetching recent traces: {e}")
             return []
