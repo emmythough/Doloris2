@@ -26,6 +26,139 @@ class Brain:
         self.tools_orchestrator = ToolsOrchestrator()
         self.intent_classifier = get_intent_classifier()
         logger.info("[BRAIN] 🧠 Brain initialized")
+    async def process_message(
+        self,
+        user_id: int,
+        message: str,
+        file_url: Optional[str] = None,
+        file_metadata: Optional[Dict] = None,
+        trace_id: Optional[str] = None
+    ) -> str:
+        """
+        Main entry point for processing user messages
+        
+        Args:
+            user_id: Telegram User ID (integer)
+            message: User message text
+            file_url: Optional URL to file
+            file_metadata: Optional file metadata
+            trace_id: Optional trace ID for system logging
+        """
+        from app.core.system_logger import system_logger
+        
+        telegram_id = user_id
+        logger.info(f"[BRAIN] 📥 Processing message from telegram_id {telegram_id}: '{message[:50]}...'")
+        
+        if trace_id:
+            system_logger.log_event(
+                trace_id=trace_id,
+                component="brain",
+                event_type="processing_start",
+                status="info",
+                details={"telegram_id": telegram_id, "message_length": len(message)}
+            )
+        
+        try:
+            # Step 0: Resolve Telegram ID to User UUID
+            user = DB.get_user_by_telegram_id(telegram_id)
+            if not user:
+                logger.info(f"[BRAIN] 👤 New user detected: {telegram_id}")
+                user = DB.create_user(telegram_id=telegram_id)
+            
+            # Use internal UUID for all DB operations
+            internal_user_id = user.id
+            logger.info(f"[BRAIN] 🆔 Resolved to internal user_id: {internal_user_id}")
+            
+            # Step 1: Classify intent
+            intent_result = await self.intent_classifier.classify(message)
+            intent = intent_result.get("intent", "chat")
+            command = intent_result.get("command")
+            
+            logger.info(f"[BRAIN] 🎯 Intent: {intent}, Command: {command}")
+            
+            if trace_id:
+                system_logger.log_event(
+                    trace_id=trace_id,
+                    component="brain",
+                    event_type="intent_detected",
+                    status="info",
+                    details={"intent": intent, "command": command},
+                    user_id=internal_user_id
+                )
+            
+            # Step 2: Handle admin commands separately
+            if intent == "admin":
+                logger.info(f"[BRAIN] 🔧 Routing to admin handler")
+                # Pass telegram_id to admin commands as they might need it for auth checks
+                return await handle_admin_command(command or message, message, telegram_id)
+            
+            # Step 3: Build context using UUID
+            context = await self._build_context(
+                user_id=internal_user_id,
+                message=message,
+                file_url=file_url,
+                file_metadata=file_metadata
+            )
+            
+            # Step 4: Select model based on intent and context
+            has_tools = intent in ["task", "note"]
+            model_tier = self.model_router.select_model(
+                message=message,
+                context=str(context),
+                has_tools=has_tools,
+                file_attached=file_url is not None
+            )
+            model_name = self.model_router.get_model_name(model_tier)
+            
+            logger.info(f"[BRAIN] 🤖 Selected model: {model_name}")
+            
+            # Step 5: Get tools for this intent
+            tools = self.tools_orchestrator.get_tools_for_intent(intent)
+            
+            # Step 6: Call OpenAI
+            response = await self._call_openai(
+                model_name=model_name,
+                messages=context["messages"],
+                tools=tools,
+                user_id=internal_user_id,
+                trace_id=trace_id
+            )
+            
+            # Step 7: Save message to history
+            DB.add_message(internal_user_id, "user", message)
+            DB.add_message(internal_user_id, "assistant", response)
+            
+            return response
+            
+        except Exception as e:
+            # Log error for R.D diagnosis
+            import sys
+            from app.middleware import log_error
+            
+            try:
+                error_signature = log_error(type(e), e, sys.exc_info()[2], service='brain')
+                logger.error(f"[BRAIN] 🔖 Error signature: {error_signature}")
+            except Exception as log_err:
+                logger.error(f"[BRAIN] ⚠️ Failed to log error: {log_err}")
+            
+            logger.error(f"[BRAIN] ❌ ERROR: {e}", exc_info=True)
+            
+            if trace_id:
+                system_logger.log_event(
+                    trace_id=trace_id,
+                    component="brain",
+                    event_type="processing_error",
+                    status="error",
+                    details={"error": str(e)}
+                )
+            
+            # Return a helpful error message
+            error_msg = str(e).lower()
+            
+            if "openai" in error_msg or "api" in error_msg:
+                return "I'm having trouble connecting to my AI service right now. Please try again in a moment."
+            elif "database" in error_msg or "supabase" in error_msg:
+                return "I'm having trouble accessing my memory right now. Your message was received, but I couldn't process it fully."
             elif "timeout" in error_msg:
                 return "That took too long to process. Could you try again with a simpler request?"
             else:
@@ -82,7 +215,8 @@ class Brain:
         model_name: str,
         messages: List[Dict],
         tools: Optional[List[Dict]],
-        user_id: str
+        user_id: str,
+        trace_id: Optional[str] = None
     ) -> str:
         """Call OpenAI and handle tool calls"""
         
@@ -102,7 +236,8 @@ class Brain:
                     # Execute tools
                     tool_results = self.tools_orchestrator.execute_batch(
                         response["tool_calls"],
-                        user_id
+                        user_id,
+                        trace_id=trace_id
                     )
                     
                     # Add tool results to messages
