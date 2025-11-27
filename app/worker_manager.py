@@ -57,21 +57,30 @@ class WorkerManager:
             
             while self.running:
                 try:
-                    # Manually dequeue and process jobs
-                    job = queue.dequeue()
+                    # Get job IDs from the queue
+                    job_ids = queue.job_ids
                     
-                    if job:
-                        logger.info(f"Processing job: {job.id}")
-                        try:
-                            # Execute the job
-                            result = job.perform()
-                            job.set_status('finished')
-                            logger.info(f"Job {job.id} completed successfully")
-                        except Exception as e:
-                            job.set_status('failed')
-                            logger.error(f"Job {job.id} failed: {e}", exc_info=True)
+                    if job_ids:
+                        # Process the first job
+                        job_id = job_ids[0]
+                        job = queue.fetch_job(job_id)
+                        
+                        if job and job.get_status() == 'queued':
+                            logger.info(f"Processing job: {job.id}")
+                            try:
+                                # Execute the job
+                                queue.connection.delete(queue.key)  # Remove from queue
+                                result = job.perform()
+                                job.set_status('finished')
+                                logger.info(f"Job {job.id} completed successfully")
+                            except Exception as e:
+                                job.set_status('failed')
+                                logger.error(f"Job {job.id} failed: {e}", exc_info=True)
+                        else:
+                            # Job already processed or not queued
+                            time.sleep(2)
                     else:
-                        # No job available, sleep briefly
+                        # No jobs available, sleep briefly
                         time.sleep(2)
                         
                 except Exception as e:
