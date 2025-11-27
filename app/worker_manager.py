@@ -36,37 +36,47 @@ class WorkerManager:
             self.running = False
             
     def _run_worker(self):
-        """Worker thread function"""
+        """Worker thread function - manually polls queue"""
+        import time
+        
         try:
             logger.info("Connecting to Redis...")
             conn = redis.from_url(REDIS_URL)
-            conn.ping()  # Test connection
+            conn.ping()
             logger.info("Redis connection successful")
             
             logger.info("Setting up queue...")
             queue = Queue('conversation', connection=conn)
-            logger.info(f"Queue created: {queue.name}")
+            logger.info(f"Queue '{queue.name}' ready")
             
-            # Import the worker function to ensure it's available
-            logger.info("Importing worker function...")
+            # Import the worker function
             from app.workers.conversation_worker import process_conversation_job
-            logger.info("Worker function imported successfully")
+            logger.info("Worker function imported")
             
-            logger.info("Creating RQ Worker...")
-            worker = Worker([queue], connection=conn)
-            logger.info("Worker created successfully")
+            logger.info("Worker polling started (checking every 2 seconds)...")
             
-            # Use burst mode with a loop to keep checking for jobs
-            logger.info("Worker starting in continuous burst mode...")
             while self.running:
                 try:
-                    worker.work(burst=True, with_scheduler=False)
-                    # Sleep briefly between bursts to avoid CPU spinning
-                    import time
-                    time.sleep(1)
+                    # Manually dequeue and process jobs
+                    job = queue.dequeue()
+                    
+                    if job:
+                        logger.info(f"Processing job: {job.id}")
+                        try:
+                            # Execute the job
+                            result = job.perform()
+                            job.set_status('finished')
+                            logger.info(f"Job {job.id} completed successfully")
+                        except Exception as e:
+                            job.set_status('failed')
+                            logger.error(f"Job {job.id} failed: {e}", exc_info=True)
+                    else:
+                        # No job available, sleep briefly
+                        time.sleep(2)
+                        
                 except Exception as e:
-                    logger.error(f"Worker burst error: {e}", exc_info=True)
-                    time.sleep(5)  # Wait longer on error
+                    logger.error(f"Worker polling error: {e}", exc_info=True)
+                    time.sleep(5)
                     
         except Exception as e:
             logger.error(f"Worker crashed during setup: {e}", exc_info=True)
