@@ -62,16 +62,22 @@ class BaseAgent(ABC):
                     # max_tokens=self.MAX_TOKENS # Not supported in wrapper yet, need to add
                 )
                 
-                response_message = response.get("message", {})
-                content = response_message.get("content")
-                tool_calls = response_message.get("tool_calls")
+                # Parse response correctly - openai_client returns {content, tool_calls} directly
+                content = response.get("content")
+                tool_calls = response.get("tool_calls")
                 
                 # If no tool calls, we are done
                 if not tool_calls:
                     return content or ""
                 
                 # If we have tool calls, execute them
-                messages.append(response_message) # Add assistant's tool call message to history
+                # Reconstruct message for history
+                assistant_message = {
+                    "role": "assistant",
+                    "content": content,
+                    "tool_calls": tool_calls
+                }
+                messages.append(assistant_message) # Add assistant's tool call message to history
                 
                 logger.info(f"Agent {self.__class__.__name__} calling tools: {len(tool_calls)}")
                 
