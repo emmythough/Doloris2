@@ -32,7 +32,7 @@ services:
     name: doloris-3-worker
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python -m app.workers.conversation_worker
+    startCommand: export PYTHONPATH=$PYTHONPATH:. && python app/workers/conversation_worker.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.6
@@ -57,7 +57,7 @@ services:
     name: doloris-3-dev-brain
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python -m app.dev_brain.worker
+    startCommand: export PYTHONPATH=$PYTHONPATH:. && python app/dev_brain/worker.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.6
