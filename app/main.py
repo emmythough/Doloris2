@@ -12,7 +12,7 @@ app = FastAPI(title="Doloris 3.0", version="3.0.0")
 # Include Routers
 app.include_router(gateway_router, tags=["gateway"])
 app.include_router(heartbeat_router, prefix="/heartbeat", tags=["heartbeat"])
-app.include_router(health_router, prefix="/health", tags=["health"]) # Registered health router
+app.include_router(health_router, tags=["health"]) # Registered health router
 
 @app.get("/")
 async def root():
