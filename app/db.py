@@ -34,6 +34,27 @@ class DB:
         }
         response = supabase.table("users").insert(data).execute()
         return User(**response.data[0])
+    
+    @staticmethod
+    def get_user_by_telegram_id(telegram_id: int) -> User:
+        """Get user by their Telegram ID"""
+        response = supabase.table("users")\
+            .select("*")\
+            .eq("telegram_id", telegram_id)\
+            .limit(1)\
+            .execute()
+        
+        if response.data:
+            return User(**response.data[0])
+        return None
+    
+    @staticmethod
+    def get_or_create_user(telegram_id: int, name: str = None) -> User:
+        """Get existing user or create new one, returns User with UUID id"""
+        user = DB.get_user_by_telegram_id(telegram_id)
+        if user:
+            return user
+        return DB.create_user(telegram_id, name)
 
     @staticmethod
     def add_message(user_id: str, role: str, content: str, meta: Dict[str, Any] = None) -> Message:

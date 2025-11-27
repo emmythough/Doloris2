@@ -30,20 +30,6 @@ def process_conversation_job(job_data):
         # but RQ workers are sync. Ideally we should use async worker or run_until_complete.
         # For simplicity in this sync worker, we might need a sync wrapper or just use asyncio.run.
         import asyncio
-        from app.brain.router import IntentRouter
-        from app.agents.chat import ChatAgent
-        from app.agents.tasks import TasksAgent
-        from app.agents.dev import DevCoordinatorAgent
-        
-        raw_update = payload.get("raw_update", {})
-        message_text = raw_update.get("message", {}).get("text", "")
-        user_id = str(raw_update.get("message", {}).get("from", {}).get("id", ""))
-        
-        if not message_text:
-            logger.warning(f"No text in message for trace {trace_id}")
-            return
-
-        # Run async classification
         intent_result = asyncio.run(IntentRouter.classify(message_text))
         intent = intent_result.get("intent", "chat")
         logger.info(f"Trace {trace_id} - Intent: {intent}")
