@@ -34,11 +34,16 @@ def enqueue_job(queue_name: str, job_type: str, payload: dict, trace_id: str):
     }
 
     if queue_name == "conversation":
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Enqueuing job {trace_id} to conversation queue")
+        
         job = conversation_queue.enqueue(
             "app.workers.conversation_worker.process_conversation_job",
             job_data,
             job_id=trace_id
         )
+        logger.info(f"Job {trace_id} enqueued successfully with ID: {job.id}")
         return job.id
     elif queue_name == "dev_brain":
         job = dev_brain_queue.enqueue(
