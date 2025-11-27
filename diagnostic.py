@@ -57,13 +57,13 @@ async def run_diagnostic():
         "message": {
             "message_id": 999,
             "from": {
-                "id": 12345,
+                "id": 605546234,  # Use a real Telegram user ID (integer, not UUID)
                 "is_bot": False,
                 "first_name": "Diagnostic",
                 "username": "diagnostic_bot"
             },
             "chat": {
-                "id": 12345,
+                "id": 605546234,
                 "type": "private"
             },
             "date": 1678900000,
