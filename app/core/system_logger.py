@@ -45,6 +45,17 @@ class SystemLogger:
             user_id: User ID if available
         """
         try:
+            # Auto-capture traceback if error and not provided
+            if status == "error" and details:
+                import traceback
+                import sys
+                if "traceback" not in details:
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+                    if exc_type:
+                        details["traceback"] = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+                        details["error_type"] = str(exc_type.__name__)
+                        details["error_message"] = str(exc_value)
+
             data = {
                 "trace_id": trace_id,
                 "event_type": event_type,

@@ -98,8 +98,15 @@ def process_conversation_job(job_data):
         system_logger.log_event(trace_id, "worker", "worker_complete", "success", {"status": "success"})
         
     except Exception as e:
+        import traceback
+        error_details = {
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "job_type": job_data.get("type"),
+            "failed_step": "unknown" # Could refine this with more granular try/except blocks if needed
+        }
         logger.error(f"Error processing job {trace_id}: {e}", exc_info=True)
-        system_logger.log_event(trace_id, "worker", "worker_error", "error", {"error": str(e)})
+        system_logger.log_event(trace_id, "worker", "worker_error", "error", error_details)
         # Don't raise if we want to avoid retrying forever on bad logic
         # raise e
 
