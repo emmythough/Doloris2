@@ -23,7 +23,7 @@ class TelegramClient:
             
         url = f"{TelegramClient.BASE_URL}/sendMessage"
         data = {
-            "chat_id": chat_id,
+            "chat_id": int(chat_id),  # Telegram API requires integer, not string
             "text": text,
             "parse_mode": "Markdown"
         }
