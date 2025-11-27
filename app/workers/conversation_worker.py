@@ -21,6 +21,51 @@ def process_conversation_job(job_data):
     
     logger.info(f"Processing job for trace {trace_id}")
     
+    try:
+        # Log Start
+        system_logger.log_event(trace_id, "worker", "worker_start", "info", {"job_type": job_data.get("type")})
+        
+        # 1. Call Intent Router
+        import asyncio
+        from app.brain.router import IntentRouter
+        from app.agents.chat import ChatAgent
+        from app.agents.tasks import TasksAgent
+        from app.agents.dev import DevCoordinatorAgent
+        from app.db import DB
+        
+        raw_update = payload.get("raw_update", {})
+        message_text = raw_update.get("message", {}).get("text", "")
+        
+        # Extract Telegram user info
+        telegram_user_id = raw_update.get("message", {}).get("from", {}).get("id")
+        user_name = raw_update.get("message", {}).get("from", {}).get("first_name", "Unknown")
+        
+        # Get or create user and get their UUID
+        user = DB.get_or_create_user(telegram_user_id, user_name)
+        user_id = user.id  # This is the UUID we need for database queries
+        
+        if not message_text:
+            logger.warning(f"No text in message for trace {trace_id}")
+            return
+
+        # Run async classification
+        intent_result = asyncio.run(IntentRouter.classify(message_text))
+        intent = intent_result.get("intent", "chat")
+        logger.info(f"Trace {trace_id} - Intent: {intent}")
+        
+        system_logger.log_event(trace_id, "worker", "intent_classified", "info", intent_result)
+
+        # 1.5 Retrieve Context & History
+        from app.memory.retrieval import ContextRetriever
+        from app.memory.summarizer import RollingSummarizer
+        
+        # Context (Tasks, Logs)
+        context = ContextRetriever.get_context(user_id)
+        
+        # History (Recent Messages)
+        # Fetch last 20 messages
+        raw_history = DB.get_recent_messages(user_id, limit=20)
+        # Convert to Dict format for LLM
         history_dicts = [{"role": m.role, "content": m.content} for m in raw_history]
         
         # Summarize if needed
