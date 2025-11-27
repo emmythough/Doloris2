@@ -1,4 +1,3 @@
-```python
 from fastapi import FastAPI
 from app.api.gateway import router as gateway_router
 from app.heartbeat import router as heartbeat_router
@@ -18,4 +17,3 @@ app.include_router(health_router, prefix="/health", tags=["health"]) # Registere
 @app.get("/")
 async def root():
     return {"status": "online", "version": "3.0.0"}
-```
