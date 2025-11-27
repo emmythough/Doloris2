@@ -26,8 +26,32 @@ def print_status(stage, status, details=""):
 async def run_diagnostic():
     print(f"\nSTARTING DEEP SYSTEM DIAGNOSTIC targeting {BASE_URL}...\n")
     
+    # 0. Check System Health (Redis & DB)
+    print("--- STAGE 0: SYSTEM HEALTH CHECK ---")
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{BASE_URL}/health")
+            
+        if response.status_code == 200:
+            data = response.json()
+            redis_status = data.get("redis", "unknown")
+            db_status = data.get("db", "unknown")
+            
+            print_status("Redis Connectivity", "OK" if redis_status == "ok" else "FAIL", f"Status: {redis_status}")
+            print_status("DB Connectivity", "OK" if db_status == "ok" else "FAIL", f"Status: {db_status}")
+            
+            if redis_status != "ok":
+                print(f"{RED}CRITICAL: Redis is reported as DOWN by the server.{RESET}")
+                return
+        else:
+            print_status("Health Endpoint", "FAIL", f"Status {response.status_code}")
+            # Continue anyway to test gateway
+            
+    except Exception as e:
+        print_status("Health Check", "FAIL", f"Connection Error: {e}")
+
     # 1. Test Gateway (API Layer)
-    print("--- STAGE 1: API GATEWAY ---")
+    print("\n--- STAGE 1: API GATEWAY ---")
     mock_payload = {
         "update_id": 123456789,
         "message": {
