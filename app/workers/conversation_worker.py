@@ -97,8 +97,21 @@ def process_conversation_job(job_data):
         from app.channels.telegram import TelegramClient
         # Use the Telegram chat ID, not the database UUID
         telegram_chat_id = raw_update.get("message", {}).get("chat", {}).get("id")
-        asyncio.run(TelegramClient.send_message(telegram_chat_id, response_text))
-        logger.info(f"Sent response to Telegram chat {telegram_chat_id}")
+        
+        try:
+            asyncio.run(TelegramClient.send_message(telegram_chat_id, response_text))
+            logger.info(f"Sent response to Telegram chat {telegram_chat_id}")
+            system_logger.log_event(trace_id, "worker", "telegram_sent", "success", {"chat_id": telegram_chat_id})
+        except Exception as telegram_error:
+            logger.error(f"Failed to send Telegram message: {telegram_error}")
+            system_logger.log_event(
+                trace_id, 
+                "worker", 
+                "telegram_send_failed", 
+                "error", 
+                {"error": str(telegram_error), "chat_id": telegram_chat_id}
+            )
+            # Don't fail the whole job just because Telegram send failed
         
         # Log Completion
         system_logger.log_event(trace_id, "worker", "worker_complete", "success", {"status": "success"})
