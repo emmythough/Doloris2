@@ -38,17 +38,38 @@ class WorkerManager:
     def _run_worker(self):
         """Worker thread function"""
         try:
+            logger.info("Connecting to Redis...")
             conn = redis.from_url(REDIS_URL)
-            queues = [Queue('conversation', connection=conn)]
+            conn.ping()  # Test connection
+            logger.info("Redis connection successful")
+            
+            logger.info("Setting up queue...")
+            queue = Queue('conversation', connection=conn)
+            logger.info(f"Queue created: {queue.name}")
             
             # Import the worker function to ensure it's available
+            logger.info("Importing worker function...")
             from app.workers.conversation_worker import process_conversation_job
+            logger.info("Worker function imported successfully")
             
-            worker = Worker(queues, connection=conn)
-            logger.info("Worker listening on 'conversation' queue...")
-            worker.work(with_scheduler=False)
+            logger.info("Creating RQ Worker...")
+            worker = Worker([queue], connection=conn)
+            logger.info("Worker created successfully")
+            
+            # Use burst mode with a loop to keep checking for jobs
+            logger.info("Worker starting in continuous burst mode...")
+            while self.running:
+                try:
+                    worker.work(burst=True, with_scheduler=False)
+                    # Sleep briefly between bursts to avoid CPU spinning
+                    import time
+                    time.sleep(1)
+                except Exception as e:
+                    logger.error(f"Worker burst error: {e}", exc_info=True)
+                    time.sleep(5)  # Wait longer on error
+                    
         except Exception as e:
-            logger.error(f"Worker crashed: {e}", exc_info=True)
+            logger.error(f"Worker crashed during setup: {e}", exc_info=True)
             self.running = False
             
     def stop_worker(self):
