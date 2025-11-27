@@ -21,33 +21,6 @@ def process_conversation_job(job_data):
     
     logger.info(f"Processing job for trace {trace_id}")
     
-    try:
-        # Log Start
-        system_logger.log_event(trace_id, "worker", "worker_start", "info", {"job_type": job_data.get("type")})
-        
-        # 1. Call Intent Router
-        # We need to run async code in sync worker, so we use asyncio.run or similar if possible, 
-        # but RQ workers are sync. Ideally we should use async worker or run_until_complete.
-        # For simplicity in this sync worker, we might need a sync wrapper or just use asyncio.run.
-        import asyncio
-        intent_result = asyncio.run(IntentRouter.classify(message_text))
-        intent = intent_result.get("intent", "chat")
-        logger.info(f"Trace {trace_id} - Intent: {intent}")
-        
-        system_logger.log_event(trace_id, "worker", "intent_classified", "info", intent_result)
-
-        # 1.5 Retrieve Context & History
-        from app.memory.retrieval import ContextRetriever
-        from app.memory.summarizer import RollingSummarizer
-        from app.db import DB
-        
-        # Context (Tasks, Logs)
-        context = ContextRetriever.get_context(user_id)
-        
-        # History (Recent Messages)
-        # Fetch last 20 messages
-        raw_history = DB.get_recent_messages(user_id, limit=20)
-        # Convert to Dict format for LLM
         history_dicts = [{"role": m.role, "content": m.content} for m in raw_history]
         
         # Summarize if needed
