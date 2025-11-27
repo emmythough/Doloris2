@@ -3,32 +3,6 @@ import logging
 import os
 import redis
 from rq import Worker, Queue
-from app.core.system_logger import system_logger
-
-# Setup Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-
-def process_conversation_job(job_data):
-    """
-    Process a conversation job from the queue.
-    This is the main entry point for the worker.
-    """
-    trace_id = job_data.get("trace_id")
-    payload = job_data.get("payload")
-    
-    logger.info(f"Processing job for trace {trace_id}")
-    
-    try:
-        # Log Start
-        system_logger.log_event(trace_id, "worker", "worker_start", "info", {"job_type": job_data.get("type")})
-        
-        # 1. Call Intent Router
-        import asyncio
-        from app.brain.router import IntentRouter
-        from app.agents.chat import ChatAgent
         from app.agents.tasks import TasksAgent
         from app.agents.dev import DevCoordinatorAgent
         from app.db import DB

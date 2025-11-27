@@ -27,19 +27,6 @@ services:
         sync: false
       - key: GITHUB_REPO
         sync: false
-
-  - type: worker
-    name: doloris-3-worker
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: export PYTHONPATH=$PYTHONPATH:. && python app/workers/conversation_worker.py
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.6
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
       - key: SUPABASE_KEY
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
