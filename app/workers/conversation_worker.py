@@ -95,8 +95,10 @@ def process_conversation_job(job_data):
 
         # 3. Send Response via Telegram API
         from app.channels.telegram import TelegramClient
-        asyncio.run(TelegramClient.send_message(user_id, response_text))
-        logger.info(f"Sent response to {user_id}")
+        # Use the Telegram chat ID, not the database UUID
+        telegram_chat_id = raw_update.get("message", {}).get("chat", {}).get("id")
+        asyncio.run(TelegramClient.send_message(telegram_chat_id, response_text))
+        logger.info(f"Sent response to Telegram chat {telegram_chat_id}")
         
         # Log Completion
         system_logger.log_event(trace_id, "worker", "worker_complete", "success", {"status": "success"})
