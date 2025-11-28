@@ -51,7 +51,7 @@ class OpenAIClient:
                         "id": tc.id,
                         "name": tc.function.name,
                         "arguments": tc.function.arguments,
-                        "type": "tool_call"
+                        "type": "function"  # Fixed: was "tool_call", should be "function"
                     })
                     logger.info(f"[OPENAI] 🛠️ Tool call: {tc.function.name}")
             

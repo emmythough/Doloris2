@@ -73,13 +73,14 @@ Always respond with JSON in this format:
         self.github_tools = get_github_tools()
         logger.info("[R.D] 🤖 Repair agent initialized")
     
-    async def repair_error(self, error_signature: str, instruction: Optional[str] = None) -> Dict:
+    async def repair_error(self, error_signature: str, instruction: Optional[str] = None, user_chat_id: Optional[int] = None) -> Dict:
         """
-        Main repair workflow
+        Main repair workflow with progress notifications
         
         Args:
             error_signature: Error signature to repair
             instruction: Optional user instruction
+            user_chat_id: Telegram chat ID for progress updates
         
         Returns:
             Dict with repair result
@@ -90,34 +91,77 @@ Always respond with JSON in this format:
         ticket = self._create_ticket(error_signature, instruction)
         ticket_id = ticket["id"]
         
+        # Send initial progress update
+        if user_chat_id:
+            await self._send_progress(user_chat_id, f"🔍 Starting investigation of ticket #{ticket_id}...")
+        
         try:
             # Step 1: Diagnose
+            if user_chat_id:
+                await self._send_progress(user_chat_id, "🔍 Analyzing error logs and stack traces...")
+            
             diagnosis = await self._diagnose(error_signature, ticket_id)
             if not diagnosis["success"]:
+                # FAIL FAST - no retries
+                if user_chat_id:
+                    await self._send_progress(user_chat_id, f"❌ Diagnosis failed: {diagnosis.get('error')}")
                 return self._fail_ticket(ticket_id, "Diagnosis failed", diagnosis.get("error"))
             
             # Step 2: Reproduce
+            if user_chat_id:
+                await self._send_progress(user_chat_id, "🧪 Writing test to reproduce the bug...")
+            
             test_result = await self._reproduce(diagnosis, ticket_id)
             if not test_result["success"]:
+                # FAIL FAST - no retries
+                if user_chat_id:
+                    await self._send_progress(user_chat_id, f"❌ Test creation failed: {test_result.get('error')}")
                 return self._fail_ticket(ticket_id, "Reproduction failed", test_result.get("error"))
             
             # Step 3: Patch
+            if user_chat_id:
+                await self._send_progress(user_chat_id, "🔨 Creating fix for the bug...")
+            
             patch_result = await self._create_patch(diagnosis, test_result, ticket_id)
             if not patch_result["success"]:
+                # FAIL FAST - no retries
+                if user_chat_id:
+                    await self._send_progress(user_chat_id, f"❌ Fix creation failed: {patch_result.get('error')}")
                 return self._fail_ticket(ticket_id, "Patch creation failed", patch_result.get("error"))
             
             # Step 4: Validate
+            if user_chat_id:
+                await self._send_progress(user_chat_id, "✅ Running tests to validate the fix...")
+            
             validation = await self._validate_fix(test_result["test_path"], ticket_id)
             if not validation["success"]:
+                # FAIL FAST - no retries
+                if user_chat_id:
+                    await self._send_progress(user_chat_id, f"❌ Tests failed: {validation.get('error')}")
                 return self._fail_ticket(ticket_id, "Validation failed", validation.get("error"))
             
             # Step 5: Create PR
+            if user_chat_id:
+                await self._send_progress(user_chat_id, "📝 Creating Pull Request on GitHub...")
+            
             pr_result = await self._create_pr(ticket_id, patch_result["files"], diagnosis)
             if not pr_result["success"]:
+                # FAIL FAST - no retries
+                if user_chat_id:
+                    await self._send_progress(user_chat_id, f"❌ PR creation failed: {pr_result.get('error')}")
                 return self._fail_ticket(ticket_id, "PR creation failed", pr_result.get("error"))
             
             # Update ticket status
             self._update_ticket(ticket_id, "awaiting_approval", f"PR created: {pr_result['pr_url']}")
+            
+            # Send final success notification
+            if user_chat_id:
+                await self._send_progress(user_chat_id, f"""✅ **Repair Complete!**
+
+PR #{pr_result['pr_number']} created and ready for review:
+{pr_result['pr_url']}
+
+🤖 R.D has finished. Review the PR and merge when ready!""")
             
             return {
                 "success": True,
@@ -128,8 +172,23 @@ Always respond with JSON in this format:
             }
         
         except Exception as e:
+            # FAIL FAST - no retries, just log and fail
             logger.error(f"[R.D] ❌ Repair failed: {e}", exc_info=True)
+            if user_chat_id:
+                await self._send_progress(user_chat_id, f"❌ **Unexpected Error:**\\n\\n{str(e)}\\n\\nR.D has stopped. Check logs for details.")
             return self._fail_ticket(ticket_id, "Unexpected error", str(e))
+    
+    async def _send_progress(self, chat_id: int, message: str):
+        """Send progress update to user via Telegram"""
+        try:
+            from app.channels.telegram import TelegramClient
+            # Prefix all messages with R.D identity
+            formatted_message = f"🤖 **R.D:**\\n\\n{message}"
+            await TelegramClient.send_message(chat_id, formatted_message)
+        except Exception as e:
+            logger.error(f"[R.D] Failed to send progress update: {e}")
+            # Don't fail the whole repair just because notification failed
+
     
     async def _diagnose(self, error_signature: str, ticket_id: str) -> Dict:
         """Step 1: Diagnose the error"""

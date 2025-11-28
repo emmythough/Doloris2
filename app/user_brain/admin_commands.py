@@ -51,56 +51,57 @@ async def handle_repair_request(message: str, user_id: int) -> str:
     try:
         from app.dev_brain.repair_agent import get_repair_agent
         
-        # Extract error signature if mentioned, otherwise use recent error
+        # Extract bug description from message
+        bug_description = message.replace("/repair", "").strip()
+        
+        # If no description, ask for one
+        if not bug_description:
+            return """Please describe the bug you want fixed.
+
+Examples:
+- `/repair Two messages in a row causes crash`
+- `/repair Can't access trace system`
+- `/repair Selfcheck command fails`"""
+        
+        # Try to find related error signature (optional)
         error_signature = None
+        try:
+            errors_result = DB.supabase.table("errors").select("error_signature").order("last_seen_at", desc=True).limit(1).execute()
+            if errors_result.data:
+                error_signature = errors_result.data[0]["error_signature"]
+        except:
+            # If errors table doesn't exist, that's OK
+            pass
         
-        # Check for recent errors
-        errors_result = DB.supabase.table("errors").select("error_signature").order("last_seen_at", desc=True).limit(1).execute()
-        
-        if errors_result.data:
-            error_signature = errors_result.data[0]["error_signature"]
-        
-        if not error_signature:
-            return """❌ **No Recent Errors Found**
-
-I couldn't find any recent errors to repair.
-
-Try:
-- Triggering an error first
-- Using `/selfcheck` to see error history"""
-        
-        # Create repair ticket and start R.D workflow
-        repair_agent = get_repair_agent()
-        
-        # Note: This is async and may take time, so we acknowledge and process in background
-        # For now, just create the ticket
+        # Create repair ticket with user's description (error_signature is optional)
         ticket = DB.supabase.table("repair_tickets").insert({
-            "instruction": message,
+            "instruction": bug_description,
             "error_signature": error_signature,
-            "status": "pending"
+            "status": "pending",
+            "reported_by": str(user_id)
         }).execute()
         
         ticket_id = ticket.data[0]["id"]
         
-        return f"""🔧 **Repair Ticket Created**
+        # R.D identifies itself clearly
+        return f"""🤖 **R.D (Repair Doloris):**
 
-**Ticket ID:** `{ticket_id}`
-**Error Signature:** `{error_signature[:16]}...`
+Ticket #{ticket_id} created for:
+"{bug_description}"
 
-**Status:** R.D 2.1 will now:
-1. 🔍 Diagnose the error
-2. 🧪 Write a reproduction test
+**I'm R.D** - the robot that repairs Doloris. I'll now:
+1. 🔍 Investigate this issue
+2. 🧪 Write a test to reproduce it
 3. 🔨 Create a fix
-4. ✅ Validate with tests
-5. 📝 Submit PR for your approval
+4. ✅ Submit a PR for review
 
-I'll notify you when the PR is ready for review!
+You'll get progress updates as I work!
 
-**Note:** This process may take a few minutes. Use `/check_repair {ticket_id}` to check status."""
+(This is NOT Doloris - I'm her repair brain!)"""
     
     except Exception as e:
         logger.error(f"[ADMIN] Repair request failed: {e}", exc_info=True)
-        return f"❌ **Repair Failed**\n\nError: {str(e)}\n\nThe repair infrastructure is set up, but something went wrong. Check logs for details."
+        return f"❌ **Repair Failed**\\n\\nError: {str(e)}\\n\\nThe repair infrastructure is set up, but something went wrong. Check logs for details."
 
 
 async def handle_selfcheck(user_id: int) -> str:
@@ -132,7 +133,7 @@ No recent errors detected! Everything seems to be running smoothly.
             signature = error.get("error_signature", "unknown")[:16]
             error_lines.append(f"  - {service}: {count}x (sig: {signature}...)")
         
-        errors_text = "\n".join(error_lines)
+        errors_text = "\\n".join(error_lines)
         
         return f"""⚠️ **System Health: Errors Detected**
 
@@ -152,7 +153,7 @@ Found {len(errors_result.data)} recent error types:
         
     except Exception as e:
         logger.error(f"[ADMIN] Selfcheck failed: {e}", exc_info=True)
-        return f"❌ Selfcheck failed: {str(e)}\n\nBut hey, I'm still responding, so I'm somewhat alive! 😅"
+        return f"❌ Selfcheck failed: {str(e)}\\n\\nBut hey, I'm still responding, so I'm somewhat alive! 😅"
 
 async def handle_diagnose_request(message: str, user_id: int) -> str:
     """
@@ -205,4 +206,4 @@ async def handle_trace_request(user_id: int) -> str:
         icon = "✅" if event['status'] == 'success' else "⚠️" if event['status'] == 'warning' else "❌" if event['status'] == 'error' else "ℹ️"
         lines.append(f"{icon} [{event['component'].upper()}] {event['event_type']}")
         
-    return "\n".join(lines)
+    return "\\n".join(lines)

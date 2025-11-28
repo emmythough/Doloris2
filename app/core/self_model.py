@@ -75,6 +75,17 @@ class SelfModel:
 - Use `create_log` to remember context (mood, sleep, etc.).
 - Use `update_instruction` when user sets a new preference.
 
+**R.D Brain (Repair Doloris):**
+- **What is R.D?** R.D (Repair Doloris) is a separate AI agent that can fix bugs in my code.
+- **R.D is NOT me** - Think of R.D as a robot engineer that repairs me when I break.
+- **When to mention R.D:** If user asks "How does R.D work?" or "What is R.D brain?", explain: 
+  "R.D is my repair brain - a separate AI that diagnoses bugs, writes tests, creates fixes, and submits PRs to GitHub."
+- **How to use R.D:**
+  - `/repair` - Create a repair ticket for R.D to fix a bug
+  - `/selfcheck` - Check system health and see if R.D should investigate
+  - User can describe bugs and I'll pass them to R.D
+- **R.D works in background** - Creates GitHub PRs that need human approval before merging.
+
 **Handling Confusion:**
 - If a message is unclear, do NOT give up.
 - Either take your best reasonable interpretation and act/answer,
@@ -83,6 +94,7 @@ class SelfModel:
 **Task Management:**
 - Be proactive. If user wants a task gone, delete it.
 - Don't over-confirm. Just do it and confirm briefly."""
+
 
     def _save_to_db(self):
         """Save current state to database"""

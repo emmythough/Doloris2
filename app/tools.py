@@ -185,24 +185,34 @@ def execute_tool(tool_name: str, args: dict, user_id: str):
         return "\n".join([f"- [{l['created_at'][:10]}] {l['type']}: {l['summary']}" for l in logs])
 
     elif tool_name == "get_trace":
-        from app.core.system_logger import system_logger
-        trace_id = args.get("trace_id")
-        events = system_logger.get_trace(trace_id)
-        if not events:
-            return f"No events found for trace {trace_id}"
-        return json.dumps(events, indent=2, default=str)
+        try:
+            from app.core.system_logger import system_logger
+            trace_id = args.get("trace_id")
+            events = system_logger.get_trace(trace_id)
+            if not events:
+                return f"No events found for trace {trace_id}"
+            return json.dumps(events, indent=2, default=str)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"get_trace failed: {e}", exc_info=True)
+            return f"❌ **Trace System Error**\n\nCouldn't retrieve trace: {str(e)}\n\nThis error has been logged for R.D to investigate."
 
     elif tool_name == "get_recent_errors":
-        # Query system_events for errors
-        response = DB.supabase.table("system_events")\
-            .select("*")\
-            .eq("status", "error")\
-            .order("created_at", desc=True)\
-            .limit(5)\
-            .execute()
-        errors = response.data
-        if not errors:
-            return "No recent errors found."
-        return "\n".join([f"- [{e['created_at']}] {e['trace_id']}: {e['data']}" for e in errors])
+        try:
+            # Query system_events for errors
+            response = DB.supabase.table("system_events")\
+                .select("*")\
+                .eq("status", "error")\
+                .order("created_at", desc=True)\
+                .limit(5)\
+                .execute()
+            errors = response.data
+            if not errors:
+                return "✅ No recent errors found. System is healthy!"
+            return "⚠️ **Recent Errors:**\n" + "\n".join([f"- [{e['created_at'][:16]}] {e.get('event_type', 'unknown')}: {e.get('trace_id', 'N/A')}" for e in errors])
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"get_recent_errors failed: {e}", exc_info=True)
+            return f"❌ **Error System Connection Failed**\n\n{str(e)}\n\nBut I'm still responding, so core systems work! Use /repair to investigate."
         
     return f"Tool {tool_name} not found."
