@@ -22,12 +22,35 @@ router = APIRouter(prefix="/api/v2", tags=["Web API v2"])
 # WebSocket connections
 active_connections: dict[str, WebSocket] = {}
 
+# Guest User Configuration
+GUEST_USER_ID = "00000000-0000-0000-0000-000000000000"  # Valid UUID for guest
+
+async def ensure_guest_user():
+    """Ensure the guest user exists in the database"""
+    try:
+        # Check if user exists
+        result = DB.supabase.table("users").select("id").eq("id", GUEST_USER_ID).execute()
+        if not result.data:
+            logger.info("Creating guest user...")
+            DB.supabase.table("users").insert({
+                "id": GUEST_USER_ID,
+                "name": "Guest User",
+                "email": "guest@doloris.ai"
+            }).execute()
+    except Exception as e:
+        logger.error(f"Failed to ensure guest user: {e}")
+
 @router.post("/chat/send", response_model=ChatSendResponse)
 async def send_message(request: ChatSendRequest):
     """
     Send message and run Tri-Cameral Council
     Returns turn_id immediately
     """
+    # Ensure guest user if needed
+    if request.user_id == "default":
+        request.user_id = GUEST_USER_ID
+        await ensure_guest_user()
+        
     turn_id = f"turn_{secrets.token_hex(8)}"
     
     logger.info(f"[WEB API] Message from {request.user_id}: {request.content}")
@@ -49,8 +72,11 @@ async def send_message(request: ChatSendRequest):
     context = {fact["fact_key"]: fact["fact_value"] for fact in context_result.data}
     
     # Send reflex immediately via WebSocket
-    if request.user_id in active_connections:
-        await active_connections[request.user_id].send_json({
+    # Note: We use the original "default" ID for the websocket connection map if that's what connected
+    ws_id = "default" if request.user_id == GUEST_USER_ID else request.user_id
+    
+    if ws_id in active_connections:
+        await active_connections[ws_id].send_json({
             "type": "reflex",
             "turn_id": turn_id,
             "content": "One sec...",
@@ -89,8 +115,8 @@ async def send_message(request: ChatSendRequest):
         }).execute()
         
         # Send council response via WebSocket
-        if request.user_id in active_connections:
-            await active_connections[request.user_id].send_json({
+        if ws_id in active_connections:
+            await active_connections[ws_id].send_json({
                 "type": "council_response",
                 "turn_id": turn_id,
                 "content": response_content,
@@ -107,8 +133,8 @@ async def send_message(request: ChatSendRequest):
                 auditor_flags=thought_trace.auditor.flags
             )
             
-            if request.user_id in active_connections:
-                await active_connections[request.user_id].send_json({
+            if ws_id in active_connections:
+                await active_connections[ws_id].send_json({
                     "type": "ticket_created",
                     "ticket_id": ticket.ticket_id,
                     "action": ticket.action,
@@ -123,8 +149,8 @@ async def send_message(request: ChatSendRequest):
         logger.error(f"[WEB API] Error: {e}", exc_info=True)
         response_content = f"I encountered an error: {str(e)}"
         
-        if request.user_id in active_connections:
-            await active_connections[request.user_id].send_json({
+        if ws_id in active_connections:
+            await active_connections[ws_id].send_json({
                 "type": "error",
                 "message": response_content,
                 "timestamp": datetime.utcnow().isoformat()
@@ -141,6 +167,10 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str = "default"):
     active_connections[user_id] = websocket
     logger.info(f"[WS] User {user_id} connected")
     
+    # Ensure guest user exists if default
+    if user_id == "default":
+        await ensure_guest_user()
+    
     try:
         # Send connection confirmation
         await websocket.send_json({
@@ -156,6 +186,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str = "default"):
             
             # Handle incoming message
             if message_data.get("type") == "message":
+                # If user_id is default, send_message will handle mapping to GUEST_USER_ID
                 await send_message(ChatSendRequest(
                     content=message_data["content"],
                     user_id=user_id
