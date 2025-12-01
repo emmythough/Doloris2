@@ -1,26 +1,44 @@
 import os
 from dotenv import load_dotenv
 
+import os
+from dotenv import load_dotenv
+
 load_dotenv()
 
-# OpenAI Configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# ======================
+# CORE CONFIG
+# ======================
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "your_webhook_secret")
+APP_BASE_URL = os.getenv("APP_BASE_URL", "https://doloris2.onrender.com")
 
-# Model names (update when GPT-5 is available)
-GPT_5_NANO_MODEL = os.getenv("GPT_5_NANO_MODEL", "gpt-4o-mini")  # Fast intent classification
-GPT_5_MINI_MODEL = os.getenv("GPT_5_MINI_MODEL", "gpt-4o")  # Main assistant brain
-GPT_5_1_MODEL = os.getenv("GPT_5_1_MODEL", "o1-mini")  # Deep reasoning
-
-# Supabase Configuration
+# Database
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-# Telegram Configuration
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
-APP_BASE_URL = os.getenv("APP_BASE_URL")
+# Redis
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
-# GitHub Configuration (for R.D 2.1)
+# OpenAI
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# GitHub (for R.D brain)
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "emmythough/Doloris2")
+
+# ======================
+# DOLORIS 5.3 - TRI-CAMERAL COUNCIL
+# ======================
+EMPATH_MODEL = "gpt-4o-mini"  # Fast + cheap for empathy simulation
+AUDITOR_MODEL = "gpt-4o-mini"  # Risk analysis
+EXECUTIVE_MODEL = "gpt-4o"     # Final synthesis (or gpt-4o-mini to save cost)
+REFLEX_MODEL = "gpt-4o-mini"   # Instant responses
+
+# Ticket System
+TICKET_SECRET_KEY = os.getenv("TICKET_SECRET_KEY", "doloris_secure_secret_key_2025")
+TICKET_EXPIRY_SECONDS = 300  # 5 minutes
+
+# Session & Learning
+SESSION_NAP_INTERVAL_SECONDS = 600  # 10 minutes
