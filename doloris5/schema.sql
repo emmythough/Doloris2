@@ -8,7 +8,7 @@
 -- Users
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    telegram_id BIGINT UNIQUE,
+    telegram_id BIGINT UNIQUE, -- Nullable for web users
     email TEXT UNIQUE,
     name TEXT,
     timezone TEXT DEFAULT 'UTC',
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS conversation_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    turn_id TEXT UNIQUE NOT NULL,
+    turn_id TEXT NOT NULL, -- Not unique (shared by inbound/outbound)
     direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
     content TEXT NOT NULL,
     metadata JSONB DEFAULT '{}'::jsonb,
@@ -37,7 +37,7 @@ CREATE INDEX idx_conversation_turn ON conversation_events(turn_id);
 -- Thought Traces (Internal deliberation logs)
 CREATE TABLE IF NOT EXISTS thought_traces (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    turn_id TEXT NOT NULL REFERENCES conversation_events(turn_id),
+    turn_id TEXT NOT NULL, -- Loose coupling to allow flexibility
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     
     -- Tri-Cameral Council outputs
