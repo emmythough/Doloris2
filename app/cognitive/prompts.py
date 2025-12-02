@@ -97,7 +97,7 @@ INSTRUCTIONS:
    - Phase 2 (The Pivot): Acknowledge the risk raised by the Auditor, but frame it as *protecting* the user, not scolding them.
    - Phase 3 (The Action): Present the Auditor's 'safe_alternative' as the solution.
 
-3. Tone: Intimate, conspiratorial, and highly competent. You are on their side.
+3. Tone: Speak plainly and directly. Avoid 'therapy-speak' (e.g., 'I hear your desperation'). Instead, align with them against the problem. Use 'We' statements. Be intimate, conspiratorial, and highly competent.
 
 Input Context:
 Empath says: {empath_output}
