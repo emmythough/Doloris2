@@ -106,68 +106,67 @@ async def send_message(request: ChatSendRequest):
     """
 
     # --- INJECT RELEVANT MEMORIES (RAG) ---
-    try:
-        # Generate embedding for current message
-        embedding_response = await openai_client.embeddings.create(
-            model="text-embedding-3-small",
-            input=request.content
-        )
-        query_embedding = embedding_response.data[0].embedding
-        
-        # Search for similar memories using vector cosine similarity
-        # Using RPC function for vector search (we'll need to create this)
-        # For now, fetch all and do in-memory search (not ideal for scale, but works)
-        memories_result = DB.supabase.table("memories")\
-            .select("content, created_at")\
-            .eq("user_id", request.user_id)\
-            .limit(50)\
-            .execute()
-        
-        if memories_result.data:
-            # Simple cosine similarity calculation
-            import numpy as np
+    # Note: Disabled until memories table migration is complete
+    RAG_ENABLED = False  # Set to True after running the migration
+    
+    if RAG_ENABLED:
+        try:
+            # Generate embedding for current message
+            embedding_response = await openai_client.embeddings.create(
+                model="text-embedding-3-small",
+                input=request.content
+            )
+            query_embedding = embedding_response.data[0].embedding
             
-            # Get embeddings for all memories (this is inefficient, ideally use pgvector)
-            relevant_memories = []
-            for memory in memories_result.data[:10]:  # Limit to recent 10 for efficiency
-                try:
-                    mem_result = DB.supabase.table("memories")\
-                        .select("content, embedding, created_at")\
-                        .eq("content", memory["content"])\
-                        .single()\
-                        .execute()
-                    
-                    if mem_result.data and mem_result.data.get("embedding"):
-                        mem_embedding = np.array(mem_result.data["embedding"])
-                        query_vec = np.array(query_embedding)
+            # Search for similar memories
+            memories_result = DB.supabase.table("memories")\
+                .select("content, created_at")\
+                .eq("user_id", request.user_id)\
+                .limit(50)\
+                .execute()
+            
+            if memories_result.data:
+                import numpy as np
+                
+                relevant_memories = []
+                for memory in memories_result.data[:10]:
+                    try:
+                        mem_result = DB.supabase.table("memories")\
+                            .select("content, embedding, created_at")\
+                            .eq("content", memory["content"])\
+                            .single()\
+                            .execute()
                         
-                        # Cosine similarity
-                        similarity = np.dot(query_vec, mem_embedding) / (
-                            np.linalg.norm(query_vec) * np.linalg.norm(mem_embedding)
-                        )
-                        
-                        relevant_memories.append({
-                            "content": mem_result.data["content"],
-                            "similarity": float(similarity),
-                            "date": mem_result.data["created_at"]
-                        })
-                except Exception as e:
-                    logger.error(f"Error processing memory: {e}")
-                    continue
-            
-            # Sort by similarity and take top 3
-            relevant_memories.sort(key=lambda x: x["similarity"], reverse=True)
-            top_memories = relevant_memories[:3]
-            
-            if top_memories:
-                memories_str = "\n".join([
-                    f"[{m['date'][:10]}] {m['content']}"
-                    for m in top_memories
-                ])
-                context["relevant_memories"] = memories_str
-                logger.info(f"[RAG] Retrieved {len(top_memories)} relevant memories")
-    except Exception as e:
-        logger.error(f"[RAG] Failed to retrieve memories: {e}")
+                        if mem_result.data and mem_result.data.get("embedding"):
+                            mem_embedding = np.array(mem_result.data["embedding"])
+                            query_vec = np.array(query_embedding)
+                            
+                            similarity = np.dot(query_vec, mem_embedding) / (
+                                np.linalg.norm(query_vec) * np.linalg.norm(mem_embedding)
+                            )
+                            
+                            relevant_memories.append({
+                                "content": mem_result.data["content"],
+                                "similarity": float(similarity),
+                                "date": mem_result.data["created_at"]
+                            })
+                    except Exception as e:
+                        logger.error(f"Error processing memory: {e}")
+                        continue
+                
+                relevant_memories.sort(key=lambda x: x["similarity"], reverse=True)
+                top_memories = relevant_memories[:3]
+                
+                if top_memories:
+                    memories_str = "\n".join([
+                        f"[{m['date'][:10]}] {m['content']}"
+                        for m in top_memories
+                    ])
+                    context["relevant_memories"] = memories_str
+                    logger.info(f"[RAG] Retrieved {len(top_memories)} relevant memories")
+        except Exception as e:
+            logger.error(f"[RAG] Failed to retrieve memories: {e}", exc_info=True)
+            # Continue without memories - don't block the response
     
     # Send reflex immediately via WebSocket
     # Note: We use the original "default" ID for the websocket connection map if that's what connected
