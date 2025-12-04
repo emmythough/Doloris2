@@ -97,6 +97,48 @@ class MemoryWorker:
                 "confidence": fact.get("confidence", 0.8)
             }).execute()
         
+        # --- NEW: Generate and store memory embeddings for RAG ---
+        try:
+            # Create a narrative summary of this session
+            conversation_text = "\n".join([
+                f"{'User' if e['direction'] == 'inbound' else 'Doloris'}: {e['content']}"
+                for e in recent_events.data
+            ])
+            
+            # Generate summary using LLM
+            summary_response = await self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{
+                    "role": "user",
+                    "content": f"Summarize this conversation in 2-3 sentences, preserving key details and emotional tone:\n\n{conversation_text}"
+                }],
+                temperature=0.3
+            )
+            summary = summary_response.choices[0].message.content
+            
+            # Generate embedding for the summary
+            embedding_response = await self.client.embeddings.create(
+                model="text-embedding-3-small",
+                input=summary
+            )
+            embedding = embedding_response.data[0].embedding
+            
+            # Store in memories table
+            self.db.table("memories").insert({
+                "user_id": user_id,
+                "content": summary,
+                "embedding": embedding,
+                "metadata": {
+                    "session_id": session_id,
+                    "turn_count": len(recent_events.data),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            }).execute()
+            
+            logger.info(f"[MEMORY] Stored vector memory: {summary[:50]}...")
+        except Exception as e:
+            logger.error(f"[MEMORY] Failed to generate embedding: {e}")
+        
         # Mark session as consolidated
         self.db.table("sessions")\
             .update({"consolidated_at": datetime.utcnow().isoformat()})\

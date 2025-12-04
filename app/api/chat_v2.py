@@ -11,11 +11,14 @@ from app.cognitive.council import council
 from app.execution.tickets import ticket_manager
 from app.models.schemas import ChatSendRequest, ChatSendResponse
 from app.db import DB
+from app.config import OPENAI_API_KEY
+from openai import AsyncOpenAI
 from supabase import create_client
 import os
 import json
 
 logger = logging.getLogger(__name__)
+openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 router = APIRouter(prefix="/api/v2", tags=["Web API v2"])
 
@@ -101,6 +104,70 @@ async def send_message(request: ChatSendRequest):
     - **Communication:** Native WebSockets for real-time thought streaming.
     - **Tools:** I have access to a Technical Layer for actions (Tasks, Logs, etc.).
     """
+
+    # --- INJECT RELEVANT MEMORIES (RAG) ---
+    try:
+        # Generate embedding for current message
+        embedding_response = await openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=request.content
+        )
+        query_embedding = embedding_response.data[0].embedding
+        
+        # Search for similar memories using vector cosine similarity
+        # Using RPC function for vector search (we'll need to create this)
+        # For now, fetch all and do in-memory search (not ideal for scale, but works)
+        memories_result = DB.supabase.table("memories")\
+            .select("content, created_at")\
+            .eq("user_id", request.user_id)\
+            .limit(50)\
+            .execute()
+        
+        if memories_result.data:
+            # Simple cosine similarity calculation
+            import numpy as np
+            
+            # Get embeddings for all memories (this is inefficient, ideally use pgvector)
+            relevant_memories = []
+            for memory in memories_result.data[:10]:  # Limit to recent 10 for efficiency
+                try:
+                    mem_result = DB.supabase.table("memories")\
+                        .select("content, embedding, created_at")\
+                        .eq("content", memory["content"])\
+                        .single()\
+                        .execute()
+                    
+                    if mem_result.data and mem_result.data.get("embedding"):
+                        mem_embedding = np.array(mem_result.data["embedding"])
+                        query_vec = np.array(query_embedding)
+                        
+                        # Cosine similarity
+                        similarity = np.dot(query_vec, mem_embedding) / (
+                            np.linalg.norm(query_vec) * np.linalg.norm(mem_embedding)
+                        )
+                        
+                        relevant_memories.append({
+                            "content": mem_result.data["content"],
+                            "similarity": float(similarity),
+                            "date": mem_result.data["created_at"]
+                        })
+                except Exception as e:
+                    logger.error(f"Error processing memory: {e}")
+                    continue
+            
+            # Sort by similarity and take top 3
+            relevant_memories.sort(key=lambda x: x["similarity"], reverse=True)
+            top_memories = relevant_memories[:3]
+            
+            if top_memories:
+                memories_str = "\n".join([
+                    f"[{m['date'][:10]}] {m['content']}"
+                    for m in top_memories
+                ])
+                context["relevant_memories"] = memories_str
+                logger.info(f"[RAG] Retrieved {len(top_memories)} relevant memories")
+    except Exception as e:
+        logger.error(f"[RAG] Failed to retrieve memories: {e}")
     
     # Send reflex immediately via WebSocket
     # Note: We use the original "default" ID for the websocket connection map if that's what connected

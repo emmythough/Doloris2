@@ -197,13 +197,16 @@ Flag any risks, constraints, or missing information."""
         # Executive needs full context to be "conscious"
         history_str = ""
         system_str = ""
+        memories_str = ""
         if context:
             if "chat_history" in context:
                 history_str = f"\n\nRecent History:\n{context['chat_history']}"
             if "system_architecture" in context:
                 system_str = f"\n\nMy Architecture:\n{context['system_architecture']}"
+            if "relevant_memories" in context:
+                memories_str = f"\n\nRelevant Past Memories:\n{context['relevant_memories']}"
 
-        return f"""User message: "{user_message}"{history_str}{system_str}
+        return f"""User message: "{user_message}"{history_str}{memories_str}{system_str}
 
 Empath proposes: "{empath.proposal}"
 

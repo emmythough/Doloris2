@@ -82,6 +82,29 @@ CREATE INDEX idx_semantic_memory_user ON semantic_memory(user_id);
 CREATE INDEX idx_semantic_memory_type ON semantic_memory(fact_type);
 
 -- ======================
+-- VECTOR MEMORY (RAG)
+-- ======================
+
+-- Enable Vector Extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Memories (Vector Store)
+CREATE TABLE IF NOT EXISTS memories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    
+    content TEXT NOT NULL, -- The actual memory text
+    embedding vector(1536), -- OpenAI text-embedding-3-small
+    
+    metadata JSONB DEFAULT '{}'::jsonb, -- Extra info (source turn, date, etc.)
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_memories_user ON memories(user_id);
+-- IVFFlat index for faster approximate search (optional, good for large datasets)
+-- CREATE INDEX idx_memories_embedding ON memories USING ivfflat (embedding vector_cosine_ops);
+
+-- ======================
 -- EXECUTION LAYER (THE HANDS)
 -- ======================
 
@@ -205,6 +228,7 @@ ALTER TABLE semantic_memory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tickets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mcp_audit ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE memories ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Users can only access their own data
 CREATE POLICY user_isolation_policy ON users FOR ALL USING (auth.uid()::uuid = id);
@@ -214,6 +238,7 @@ CREATE POLICY user_memory_policy ON semantic_memory FOR ALL USING (auth.uid()::u
 CREATE POLICY user_tickets_policy ON tickets FOR ALL USING (auth.uid()::uuid = user_id);
 CREATE POLICY user_audit_policy ON mcp_audit FOR ALL USING (auth.uid()::uuid = user_id);
 CREATE POLICY user_sessions_policy ON sessions FOR ALL USING (auth.uid()::uuid = user_id);
+CREATE POLICY user_memories_policy ON memories FOR ALL USING (auth.uid()::uuid = user_id);
 
 -- Service role can access everything (for backend workers)
 CREATE POLICY service_role_all ON users FOR ALL TO service_role USING (true);
@@ -223,6 +248,7 @@ CREATE POLICY service_role_memory ON semantic_memory FOR ALL TO service_role USI
 CREATE POLICY service_role_tickets ON tickets FOR ALL TO service_role USING (true);
 CREATE POLICY service_role_audit ON mcp_audit FOR ALL TO service_role USING (true);
 CREATE POLICY service_role_sessions ON sessions FOR ALL TO service_role USING (true);
+CREATE POLICY service_role_memories ON memories FOR ALL TO service_role USING (true);
 
 -- ======================
 -- FUNCTIONS & TRIGGERS
