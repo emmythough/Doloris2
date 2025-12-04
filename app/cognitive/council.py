@@ -155,12 +155,10 @@ class TriCameralCouncil:
             # Extract special context keys
             history = context.get("chat_history", "")
             system_info = context.get("system_architecture", "")
+            semantic_facts = context.get("semantic_facts", "")
             
-            # Filter out large keys for the general context dump if needed, 
-            # but for now we'll just dump everything else
-            other_context = {k: v for k, v in context.items() if k not in ["chat_history", "system_architecture"]}
-            
-            context_str = f"\n\nContext:\n{json.dumps(other_context, indent=2)}"
+            if semantic_facts:
+                context_str += f"\n\nWhat I Know About the User:\n{semantic_facts}"
             
             if history:
                 context_str += f"\n\nRecent Chat History:\n{history}"
@@ -198,6 +196,7 @@ Flag any risks, constraints, or missing information."""
         history_str = ""
         system_str = ""
         memories_str = ""
+        semantic_str = ""
         if context:
             if "chat_history" in context:
                 history_str = f"\n\nRecent History:\n{context['chat_history']}"
@@ -205,8 +204,10 @@ Flag any risks, constraints, or missing information."""
                 system_str = f"\n\nMy Architecture:\n{context['system_architecture']}"
             if "relevant_memories" in context:
                 memories_str = f"\n\nRelevant Past Memories:\n{context['relevant_memories']}"
+            if "semantic_facts" in context:
+                semantic_str = f"\n\nWhat I Know About the User:\n{context['semantic_facts']}"
 
-        return f"""User message: "{user_message}"{history_str}{memories_str}{system_str}
+        return f"""User message: "{user_message}"{semantic_str}{history_str}{memories_str}{system_str}
 
 Empath proposes: "{empath.proposal}"
 

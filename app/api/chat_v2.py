@@ -72,7 +72,43 @@ async def send_message(request: ChatSendRequest):
         .eq("user_id", request.user_id)\
         .execute()
     
-    context = {fact["fact_key"]: fact["fact_value"] for fact in context_result.data}
+    # Format semantic facts in a readable way
+    context = {}
+    if context_result.data:
+        facts_by_type = {
+            "preferences": [],
+            "habits": [],
+            "relationships": [],
+            "context": []
+        }
+        
+        for fact in context_result.data:
+            fact_type = fact.get("fact_type", "context")
+            key = fact["fact_key"]
+            value = fact["fact_value"]
+            
+            if fact_type == "preference":
+                facts_by_type["preferences"].append(f"{key}: {value}")
+            elif fact_type == "habit":
+                facts_by_type["habits"].append(f"{key}: {value}")
+            elif fact_type == "relationship":
+                facts_by_type["relationships"].append(f"{key}: {value}")
+            else:
+                facts_by_type["context"].append(f"{key}: {value}")
+        
+        # Build a nice summary
+        memory_summary = []
+        if facts_by_type["preferences"]:
+            memory_summary.append("Preferences:\n" + "\n".join(f"  - {f}" for f in facts_by_type["preferences"]))
+        if facts_by_type["habits"]:
+            memory_summary.append("Habits:\n" + "\n".join(f"  - {f}" for f in facts_by_type["habits"]))
+        if facts_by_type["relationships"]:
+            memory_summary.append("Relationships:\n" + "\n".join(f"  - {f}" for f in facts_by_type["relationships"]))
+        if facts_by_type["context"]:
+            memory_summary.append("Context:\n" + "\n".join(f"  - {f}" for f in facts_by_type["context"]))
+        
+        if memory_summary:
+            context["semantic_facts"] = "\n\n".join(memory_summary)
 
     # --- INJECT MEMORY (Recent History) ---
     try:
@@ -104,69 +140,6 @@ async def send_message(request: ChatSendRequest):
     - **Communication:** Native WebSockets for real-time thought streaming.
     - **Tools:** I have access to a Technical Layer for actions (Tasks, Logs, etc.).
     """
-
-    # --- INJECT RELEVANT MEMORIES (RAG) ---
-    # Note: Disabled until memories table migration is complete
-    RAG_ENABLED = False  # Set to True after running the migration
-    
-    if RAG_ENABLED:
-        try:
-            # Generate embedding for current message
-            embedding_response = await openai_client.embeddings.create(
-                model="text-embedding-3-small",
-                input=request.content
-            )
-            query_embedding = embedding_response.data[0].embedding
-            
-            # Search for similar memories
-            memories_result = DB.supabase.table("memories")\
-                .select("content, created_at")\
-                .eq("user_id", request.user_id)\
-                .limit(50)\
-                .execute()
-            
-            if memories_result.data:
-                import numpy as np
-                
-                relevant_memories = []
-                for memory in memories_result.data[:10]:
-                    try:
-                        mem_result = DB.supabase.table("memories")\
-                            .select("content, embedding, created_at")\
-                            .eq("content", memory["content"])\
-                            .single()\
-                            .execute()
-                        
-                        if mem_result.data and mem_result.data.get("embedding"):
-                            mem_embedding = np.array(mem_result.data["embedding"])
-                            query_vec = np.array(query_embedding)
-                            
-                            similarity = np.dot(query_vec, mem_embedding) / (
-                                np.linalg.norm(query_vec) * np.linalg.norm(mem_embedding)
-                            )
-                            
-                            relevant_memories.append({
-                                "content": mem_result.data["content"],
-                                "similarity": float(similarity),
-                                "date": mem_result.data["created_at"]
-                            })
-                    except Exception as e:
-                        logger.error(f"Error processing memory: {e}")
-                        continue
-                
-                relevant_memories.sort(key=lambda x: x["similarity"], reverse=True)
-                top_memories = relevant_memories[:3]
-                
-                if top_memories:
-                    memories_str = "\n".join([
-                        f"[{m['date'][:10]}] {m['content']}"
-                        for m in top_memories
-                    ])
-                    context["relevant_memories"] = memories_str
-                    logger.info(f"[RAG] Retrieved {len(top_memories)} relevant memories")
-        except Exception as e:
-            logger.error(f"[RAG] Failed to retrieve memories: {e}", exc_info=True)
-            # Continue without memories - don't block the response
     
     # Send reflex immediately via WebSocket
     # Note: We use the original "default" ID for the websocket connection map if that's what connected
