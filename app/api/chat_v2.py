@@ -158,6 +158,8 @@ async def send_message(request: ChatSendRequest):
     
     return ChatSendResponse(turn_id=turn_id, status="processing")
 
+import asyncio
+
 @router.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket, user_id: str = "default"):
     """
@@ -186,11 +188,12 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str = "default"):
             
             # Handle incoming message
             if message_data.get("type") == "message":
+                # Process in background to avoid blocking the loop
                 # If user_id is default, send_message will handle mapping to GUEST_USER_ID
-                await send_message(ChatSendRequest(
+                asyncio.create_task(send_message(ChatSendRequest(
                     content=message_data["content"],
                     user_id=user_id
-                ))
+                )))
     
     except WebSocketDisconnect:
         active_connections.pop(user_id, None)
@@ -202,6 +205,10 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str = "default"):
 @router.get("/chat/history")
 async def get_chat_history(user_id: str, limit: int = 50):
     """Get conversation history"""
+    # Handle guest user
+    if user_id == "default":
+        user_id = GUEST_USER_ID
+        
     result = DB.supabase.table("conversation_events")\
         .select("*")\
         .eq("user_id", user_id)\
