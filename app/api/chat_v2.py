@@ -70,6 +70,37 @@ async def send_message(request: ChatSendRequest):
         .execute()
     
     context = {fact["fact_key"]: fact["fact_value"] for fact in context_result.data}
+
+    # --- INJECT MEMORY (Recent History) ---
+    try:
+        history_result = DB.supabase.table("conversation_events")\
+            .select("*")\
+            .eq("user_id", request.user_id)\
+            .order("created_at", desc=True)\
+            .limit(10)\
+            .execute()
+        
+        # Reverse to chronological order
+        recent_events = history_result.data[::-1]
+        history_str = ""
+        for event in recent_events:
+            role = "User" if event["direction"] == "inbound" else "Doloris"
+            history_str += f"{role}: {event['content']}\n"
+            
+        context["chat_history"] = history_str
+    except Exception as e:
+        logger.error(f"Failed to fetch history for context: {e}")
+
+    # --- INJECT SELF-AWARENESS (System Info) ---
+    context["system_architecture"] = """
+    My Internal Architecture (Doloris 5.3):
+    - **Cognitive Layer (The Ghost):** I am a Tri-Cameral Council (Empath, Auditor, Executive) running on OpenAI models.
+    - **Backend:** Python FastAPI running on Render.
+    - **Database:** Supabase (PostgreSQL) for long-term memory and logs.
+    - **Frontend:** React + TypeScript (Vite) running on Netlify/Loveable.
+    - **Communication:** Native WebSockets for real-time thought streaming.
+    - **Tools:** I have access to a Technical Layer for actions (Tasks, Logs, etc.).
+    """
     
     # Send reflex immediately via WebSocket
     # Note: We use the original "default" ID for the websocket connection map if that's what connected

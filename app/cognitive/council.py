@@ -152,7 +152,21 @@ class TriCameralCouncil:
         """Build prompt for Empath with context"""
         context_str = ""
         if context:
-            context_str = f"\n\nUser context:\n{json.dumps(context, indent=2)}"
+            # Extract special context keys
+            history = context.get("chat_history", "")
+            system_info = context.get("system_architecture", "")
+            
+            # Filter out large keys for the general context dump if needed, 
+            # but for now we'll just dump everything else
+            other_context = {k: v for k, v in context.items() if k not in ["chat_history", "system_architecture"]}
+            
+            context_str = f"\n\nContext:\n{json.dumps(other_context, indent=2)}"
+            
+            if history:
+                context_str += f"\n\nRecent Chat History:\n{history}"
+            
+            if system_info:
+                context_str += f"\n\nSystem Awareness:\n{system_info}"
         
         return f"""User message: "{user_message}"{context_str}
 
@@ -160,7 +174,12 @@ What does the user truly want? Propose the optimal path."""
     
     def _build_auditor_prompt(self, user_message: str, empath: EmpathOutput, context: Dict[str, Any]) -> str:
         """Build prompt for Auditor"""
-        return f"""User message: "{user_message}"
+        # Auditor also needs history to spot contradictions or repeated requests
+        history_str = ""
+        if context and "chat_history" in context:
+            history_str = f"\n\nRecent History:\n{context['chat_history']}"
+
+        return f"""User message: "{user_message}"{history_str}
 
 Empath proposes: "{empath.proposal}"
 Predicted intent: {empath.predicted_intent}
@@ -175,7 +194,16 @@ Flag any risks, constraints, or missing information."""
         context: Dict[str, Any]
     ) -> str:
         """Build prompt for Executive"""
-        return f"""User message: "{user_message}"
+        # Executive needs full context to be "conscious"
+        history_str = ""
+        system_str = ""
+        if context:
+            if "chat_history" in context:
+                history_str = f"\n\nRecent History:\n{context['chat_history']}"
+            if "system_architecture" in context:
+                system_str = f"\n\nMy Architecture:\n{context['system_architecture']}"
+
+        return f"""User message: "{user_message}"{history_str}{system_str}
 
 Empath proposes: "{empath.proposal}"
 
