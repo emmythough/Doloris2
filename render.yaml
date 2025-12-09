@@ -2,6 +2,7 @@ services:
   - type: web
     name: doloris-2
     env: python
+    rootDir: doloris5  # CRITICAL: Deploy from doloris5 folder
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
@@ -10,8 +11,6 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_KEY
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
@@ -27,17 +26,7 @@ services:
         sync: false
       - key: GITHUB_REPO
         sync: false
-      - key: SUPABASE_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: REDIS_URL
-        sync: false
-      - key: GITHUB_TOKEN
-        sync: false
-      - key: GITHUB_REPO
+      - key: TICKET_SECRET_KEY
         sync: false
 
   - type: worker
