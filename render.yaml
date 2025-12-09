@@ -4,7 +4,7 @@ services:
     env: python
     rootDir: doloris5  # CRITICAL: Deploy from doloris5 folder
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: cd /opt/render/project/src && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.6
