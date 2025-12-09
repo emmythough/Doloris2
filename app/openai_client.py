@@ -13,7 +13,7 @@ class OpenAIClient:
     async def chat_completion(
         self,
         messages: List[Dict],
-        model: str = "gpt-4o",
+        model: str = "gpt-4o-mini",
         tools: Optional[List[Dict]] = None,
         temperature: float = 1.0
     ) -> Dict[str, Any]:
@@ -71,7 +71,7 @@ class OpenAIClient:
 def get_completion(
     messages: list,
     tools: list = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-4o-mini",
     temperature: float = 1.0
 ):
     """

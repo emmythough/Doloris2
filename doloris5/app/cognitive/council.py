@@ -190,8 +190,9 @@ If unsure → clarify."""
     
     def _estimate_cost(self, total_tokens: int) -> float:
         """Estimate cost in USD (rough approximation)"""
-        # Rough estimate: $0.15 per 1M tokens for gpt-4o-mini
-        cost_per_token = 0.15 / 1_000_000
+        # All models now gpt-4o-mini: $0.15 per 1M input tokens, $0.60 per 1M output tokens
+        # Using average estimate for simplicity
+        cost_per_token = 0.30 / 1_000_000
         return total_tokens * cost_per_token
 
 

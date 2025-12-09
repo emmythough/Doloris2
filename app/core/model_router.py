@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class ModelTier(Enum):
     TIER_0 = "gpt-4o-mini"      # Ultra-cheap (was gpt-5-nano)
     TIER_1 = "gpt-4o-mini"      # Balance (was gpt-5-mini)
-    TIER_2 = "gpt-4o"           # Standard (was gpt-5)
+    TIER_2 = "gpt-4o-mini"      # Standard - switched from gpt-4o for cost savings
     TIER_3 = "o1-mini"          # Reasoning (was gpt-5.1)
     TIER_4_DEEP = "o1-mini"     # Deep
     TIER_4_MAX = "o1-preview"   # Max Intelligence (was o3-pro)

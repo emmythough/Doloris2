@@ -50,9 +50,51 @@ app.add_middleware(
 )
 
 # ======================
+# USER SESSION
+# ======================
+
+@app.post("/api/v2/session")
+@app.post("/api/session")
+async def create_or_get_user(email: str = None, name: str = "Anonymous", telegram_id: int = None):
+    """
+    Create or retrieve a user session
+    Returns a user_id (UUID) that should be stored by the client
+    """
+    # Try to find existing user
+    if email:
+        result = db.table("users").select("*").eq("email", email).execute()
+    elif telegram_id:
+        result = db.table("users").select("*").eq("telegram_id", telegram_id).execute()
+    else:
+        # Create anonymous user
+        result = db.table("users").insert({
+            "name": name,
+            "created_at": datetime.utcnow().isoformat(),
+            "last_active_at": datetime.utcnow().isoformat()
+        }).execute()
+        return {"user_id": result.data[0]["id"], "user": result.data[0]}
+    
+    if result.data:
+        # Update last active
+        user = result.data[0]
+        db.table("users").update({"last_active_at": datetime.utcnow().isoformat()}).eq("id", user["id"]).execute()
+        return {"user_id": user["id"], "user": user}
+    else:
+        # Create new user
+        insert_data = {"name": name}
+        if email:
+            insert_data["email"] = email
+        if telegram_id:
+            insert_data["telegram_id"] = telegram_id
+        
+        result = db.table("users").insert(insert_data).execute()
+        return {"user_id": result.data[0]["id"], "user": result.data[0]}
+
+# ======================
 # CHAT ENDPOINTS
 # ======================
 
+@app.post("/api/v2/chat/send", response_model=ChatSendResponse)
 @app.post("/api/chat/send", response_model=ChatSendResponse)
 async def send_message(request: ChatSendRequest):
     """
@@ -84,6 +126,7 @@ async def send_message(request: ChatSendRequest):
     
     return ChatSendResponse(turn_id=turn_id)
 
+@app.get("/api/v2/chat/history")
 @app.get("/api/chat/history")
 async def get_chat_history(user_id: str, limit: int = 50):
     """Get conversation history for a user"""
@@ -209,6 +252,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+@app.websocket("/api/v2/ws/chat")
 @app.websocket("/api/ws/chat")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     """

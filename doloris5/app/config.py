@@ -12,7 +12,7 @@ load_dotenv()
 # ======================
 EMPATH_MODEL = "gpt-4o-mini"  # Fast + cheap for empathy simulation
 AUDITOR_MODEL = "gpt-4o-mini"  # Risk analysis
-EXECUTIVE_MODEL = "gpt-4o"     # Final synthesis (can be 4o-mini to save cost)
+EXECUTIVE_MODEL = "gpt-4o-mini"  # Final synthesis - switched to mini for cost savings
 REFLEX_MODEL = "gpt-4o-mini"   # Instant responses
 
 # ======================
