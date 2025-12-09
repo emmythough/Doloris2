@@ -3,6 +3,7 @@ FastAPI Gateway for Doloris 5.3
 Main HTTP + WebSocket entry point
 """
 import logging
+import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -256,20 +257,60 @@ manager = ConnectionManager()
 @app.websocket("/api/ws/chat")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     """
-    WebSocket endpoint for real-time updates
+    WebSocket endpoint for real-time bidirectional communication
     
-    Streams:
-    - Reflex responses
-    - Council responses
-    - Ticket creations
-    - Thinking indicators
+    Handles:
+    - Incoming messages from client → store in DB + route to workers
+    - Outgoing messages from Redis → stream to client
     """
     await manager.connect(websocket, user_id)
     
     try:
-        # Start listening to outbox stream for this user
+        # Import here to avoid circular dependency
         from app.api.websocket import stream_to_websocket
-        await stream_to_websocket(websocket, user_id)
+        
+        async def handle_incoming_messages():
+            """Listen for messages from the client"""
+            while True:
+                try:
+                    data = await websocket.receive_json()
+                    
+                    if data.get("type") == "message":
+                        # Generate turn ID
+                        turn_id = f"turn_{secrets.token_hex(8)}"
+                        
+                        # Store inbound message
+                        db.table("conversation_events").insert({
+                            "turn_id": turn_id,
+                            "user_id": user_id,
+                            "direction": MessageDirection.INBOUND.value,
+                            "content": data["content"]
+                        }).execute()
+                        
+                        # Publish to inbox stream for processing
+                        await producer.publish_to_inbox(
+                            turn_id=turn_id,
+                            user_id=user_id,
+                            content=data["content"]
+                        )
+                        
+                        logger.info(f"[WS] Message from {user_id}: {turn_id}")
+                        
+                except Exception as e:
+                    if "WebSocket" in str(type(e)):
+                        break
+                    logger.error(f"[WS] Error receiving: {e}")
+        
+        async def handle_outgoing_messages():
+            """Stream messages from Redis to client"""
+            await stream_to_websocket(websocket, user_id)
+        
+        # Run both handlers concurrently
+        await asyncio.gather(
+            handle_incoming_messages(),
+            handle_outgoing_messages(),
+            return_exceptions=True
+        )
         
     except WebSocketDisconnect:
         manager.disconnect(user_id)
